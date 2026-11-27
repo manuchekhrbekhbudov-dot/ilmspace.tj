@@ -1,0 +1,19 @@
+# Насб дар Render бо як пахш: https://render.com/deploy?repo=https://github.com/manuchekhrbekhbudov-dot/ilmspace.tj
+services:
+  - type: web
+    name: ilmspace-codelab
+    runtime: docker
+    plan: starter          # диски доимӣ танҳо дар нақшаи пулакӣ; бе он база ҳангоми бозоғоз тоза мешавад
+    region: frankfurt
+    healthCheckPath: /api/judge/status
+    envVars:
+      - key: JUDGE_DRIVER
+        value: local
+      - key: DB_FILE
+        value: /data/codelab.db
+      - key: COURSE_START
+        value: "2026-11-28"
+    disk:
+      name: codelab-data
+      mountPath: /data
+      sizeGB: 1
