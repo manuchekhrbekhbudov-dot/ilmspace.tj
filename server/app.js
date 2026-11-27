@@ -1,5 +1,6 @@
 // ILMSPACE CodeLab — сервер (node:http, бе фреймворк)
 import http from 'node:http';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { openDb, q } from './db.js';
@@ -11,6 +12,12 @@ import { TOPICS, DEFAULT_STARTER } from './seed/problems.js';
 import { HttpError, bad, forbidden, notFound, J, token, hashPassword, checkPassword, inviteCode, dushanbeDate, localToUtcIso } from './util.js';
 
 const STARTED_AT = new Date().toISOString();
+// Пароли намоишӣ дар README-и оммавӣ навишта шудааст — дар сайти воқеӣ бояд иваз шавад
+const PUBLIC_DEMO_PASSWORDS = new Set(['ilmspace']);
+const DEMO_LOGINS = ['ustod', 'shogird', 'begona'];
+// Огоҳӣ дар бораи пароли намоишӣ танҳо дар сайти воқеӣ (Render) ё бо WARN_DEMO_PASSWORD=1
+const DEMO_WARN = !!(process.env.RENDER || process.env.WARN_DEMO_PASSWORD);
+const pubUser = u => u && { id: u.id, login: u.login, name: u.name, role: u.role, weak_pw: DEMO_WARN && u.weak_pw ? 1 : 0 };
 export function createApp({ dbFile, staticDir, seed = true } = {}) {
   const db = openDb(dbFile);
   const Q = q(db);
@@ -18,6 +25,25 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   if (migrateCourse(Q)) console.log('Курси нав (220 масъала) ба база илова шуд.');
   const t = ensureTeacher(Q);
   if (t) console.log(`Ҳисоби устод омода аст: ${t.login}${t.fromDemo ? ' (гурӯҳҳо ва дарси омода ба он гузаштанд)' : ''}`);
+  // Ҳисобҳое, ки ҳанӯз пароли намоишии оммавӣ доранд (устодҳо ва ҳисобҳои намоишӣ)
+  for (const u of Q.all(`SELECT id, pass_hash, weak_pw FROM users WHERE role='teacher' OR login IN (${DEMO_LOGINS.map(() => '?').join(',')})`, ...DEMO_LOGINS)) {
+    const weak = [...PUBLIC_DEMO_PASSWORDS].some(pw => checkPassword(pw, u.pass_hash)) ? 1 : 0;
+    if (weak !== u.weak_pw) Q.run('UPDATE users SET weak_pw=? WHERE id=?', weak, u.id);
+  }
+
+  // Версияи барнома: хэши app.js ва styles.css. Браузер нусхаи кӯҳнаро нигоҳ намедорад ва пас аз навсозӣ худаш аз нав бор мешавад.
+  let build = { at: 0, key: '', id: 'dev' };
+  function buildId() {
+    if (Date.now() - build.at < 2000) return build.id;
+    try {
+      const fa = path.join(staticDir, 'app.js'), fc = path.join(staticDir, 'styles.css');
+      const a = fs.statSync(fa), c = fs.statSync(fc);
+      const key = `${a.mtimeMs}:${a.size}:${c.mtimeMs}:${c.size}`;
+      if (key !== build.key) build = { ...build, key, id: crypto.createHash('sha1').update(fs.readFileSync(fa)).update(fs.readFileSync(fc)).digest('hex').slice(0, 12) };
+    } catch {}
+    build.at = Date.now();
+    return build.id;
+  }
 
   // ───────── Realtime (SSE) ─────────
   const streams = new Map(); // userId -> Set(res)
@@ -34,7 +60,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   setInterval(() => { for (const set of streams.values()) for (const r of set) r.write(': ping\n\n'); }, 25000).unref();
 
   // ───────── Ёрирасонҳо ─────────
-  const userBy = sid => sid && Q.get('SELECT u.id, u.login, u.name, u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=?', sid);
+  const userBy = sid => sid && Q.get('SELECT u.id, u.login, u.name, u.role, u.weak_pw FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token=?', sid);
   const ownsGroup = (u, gid) => u.role === 'teacher' && !!Q.get('SELECT 1 FROM groups WHERE id=? AND teacher_id=?', gid, u.id);
   const isMember = (uid, gid) => !!Q.get("SELECT 1 FROM group_members WHERE group_id=? AND user_id=? AND status='active'", gid, uid);
   function lessonFor(u, id) {
@@ -332,6 +358,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     if (name.length < 2) throw bad('Ном ва насабро нависед.');
     if (login.length < 3 || login.length > 32 || /\s/.test(login)) throw bad('Логин бояд аз 3 то 32 аломат бошад ва фосила надошта бошад. Ҳар гуна ҳарф (тоҷикӣ ё лотинӣ), рақам ва аломат мумкин аст.');
     if (pw.length < 8) throw bad('Парол бояд ҳадди ақал 8 аломат бошад (ҳар гуна ҳарф, рақам ё аломат).');
+    if (PUBLIC_DEMO_PASSWORDS.has(pw)) throw bad('Ин парол ба ҳама маълум аст. Пароли дигар интихоб кунед.');
     if (Q.get('SELECT 1 FROM users WHERE login=?', login)) throw bad('Ин логин аллакай банд аст.');
     const id = Number(Q.run("INSERT INTO users (login, name, pass_hash, role) VALUES (?,?,?,'student')", login, name, hashPassword(pw)).lastInsertRowid);
     const t = token(); Q.run('INSERT INTO sessions (token, user_id) VALUES (?,?)', t, id);
@@ -340,16 +367,18 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   R('POST', '/api/login', ({ body }) => {
     const u = Q.get('SELECT * FROM users WHERE login=?', String(body.login || '').trim().toLowerCase());
     if (!u || !checkPassword(String(body.password || ''), u.pass_hash)) throw bad('Логин ё парол нодуруст аст.');
+    const weak = PUBLIC_DEMO_PASSWORDS.has(String(body.password)) ? 1 : 0;
+    if (weak !== u.weak_pw) Q.run('UPDATE users SET weak_pw=? WHERE id=?', weak, u.id);
     const t = token(); Q.run('INSERT INTO sessions (token, user_id) VALUES (?,?)', t, u.id);
-    return { cookie: t, user: { id: u.id, login: u.login, name: u.name, role: u.role } };
+    return { cookie: t, user: pubUser({ ...u, weak_pw: weak }) };
   });
   R('POST', '/api/logout', ({ sid }) => { Q.run('DELETE FROM sessions WHERE token=?', sid || ''); return { cookie: '' }; });
   // Оё файли база дар диски доимӣ аст? (дар Render-и ройгон /data диски муваққатӣ аст)
   const onMountedDisk = () => { try { const dir = path.dirname(path.resolve(dbFile)); return fs.readFileSync('/proc/mounts', 'utf8').split('\n').some(l => { const mp = l.split(' ')[1]; return mp && mp !== '/' && (dir === mp || dir.startsWith(mp + '/')) && /^\/(data|var\/data|mnt)/.test(mp); }); } catch { return false; } };
   const storage = () => { const p = persistStatus(); return { ...p, ephemeral: p.mode !== 'postgres' && (p.mode === 'invalid' || (!!process.env.RENDER && !onMountedDisk())) }; };
 
-  R('GET', '/api/me', ({ user }) => ({ user: user || null, judge: judgeStatus(), storage: user?.role === 'teacher' ? storage() : undefined }));
-  R('GET', '/api/health', () => ({ ok: true, startedAt: STARTED_AT, storage: storage(), judge: judgeStatus().ok }));
+  R('GET', '/api/me', ({ user }) => ({ user: pubUser(user) || null, judge: judgeStatus(), storage: user?.role === 'teacher' ? storage() : undefined }));
+  R('GET', '/api/health', () => ({ ok: true, startedAt: STARTED_AT, build: buildId(), storage: storage(), judge: judgeStatus().ok }));
   // Профил: ном, логин ва паролро худи корбар иваз мекунад (пароли ҷорӣ лозим аст)
   R('PUT', '/api/me', ({ user, body, sid }) => {
     need(user);
@@ -362,9 +391,11 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     if (login.length < 3 || login.length > 32 || /\s/.test(login)) throw bad('Логин бояд аз 3 то 32 аломат бошад ва фосила надошта бошад.');
     if (login !== row.login && Q.get('SELECT 1 FROM users WHERE login=?', login)) throw bad('Ин логин аллакай банд аст.');
     if (pw && pw.length < 8) throw bad('Пароли нав бояд ҳадди ақал 8 аломат бошад.');
-    Q.run('UPDATE users SET name=?, login=?, pass_hash=? WHERE id=?', name, login, pw ? hashPassword(pw) : row.pass_hash, row.id);
+    if (pw && PUBLIC_DEMO_PASSWORDS.has(pw)) throw bad('Ин парол ба ҳама маълум аст. Пароли дигар интихоб кунед.');
+    const weak = pw ? 0 : row.weak_pw;
+    Q.run('UPDATE users SET name=?, login=?, pass_hash=?, weak_pw=? WHERE id=?', name, login, pw ? hashPassword(pw) : row.pass_hash, weak, row.id);
     if (pw) Q.run('DELETE FROM sessions WHERE user_id=? AND token!=?', row.id, sid || '');
-    return { user: { id: row.id, login, name, role: row.role } };
+    return { user: pubUser({ id: row.id, login, name, role: row.role, weak_pw: weak }) };
   });
   R('GET', '/api/judge/status', () => ({ ...judgeStatus(), queue: queueDepth() }));
 
@@ -408,7 +439,8 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   R('GET', '/api/groups/:id', ({ user, params }) => {
     need(user, 'teacher'); const gid = Number(params.id); if (!ownsGroup(user, gid)) throw forbidden();
     const g = Q.get('SELECT * FROM groups WHERE id=?', gid);
-    const mem = Q.all('SELECT u.id, u.name, u.login, m.status, m.created_at FROM group_members m JOIN users u ON u.id=m.user_id WHERE m.group_id=? ORDER BY m.status, u.name', gid);
+    const mem = Q.all('SELECT u.id, u.name, u.login, m.status, m.created_at FROM group_members m JOIN users u ON u.id=m.user_id WHERE m.group_id=? ORDER BY m.status, u.name', gid)
+      .map(m => ({ ...m, exam_blocked: Q.all('SELECT v.lesson_id, l.title FROM exam_violations v JOIN lessons l ON l.id=v.lesson_id WHERE v.user_id=? AND v.blocked=1 AND l.group_id=?', m.id, gid) }));
     const lessons = Q.all('SELECT * FROM lessons WHERE group_id=? ORDER BY scheduled_at', gid).map(l => ({ ...l, steps: Q.get('SELECT COUNT(*) c FROM lesson_steps WHERE lesson_id=?', l.id).c, homework_problem_ids: J(l.homework_problem_ids) }));
     const asg = Q.all('SELECT * FROM assignments WHERE group_id=? ORDER BY due_at', gid).map(a => {
       const active = mem.filter(m => m.status === 'active');
@@ -441,7 +473,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     need(user, 'teacher'); const gid = Number(params.id), uid = Number(params.uid);
     if (!ownsGroup(user, gid) || !Q.get('SELECT 1 FROM group_members WHERE group_id=? AND user_id=?', gid, uid)) throw forbidden();
     const A = 'abcdefghkmnpqrstuvwxyz23456789'; let pw = ''; for (let i = 0; i < 8; i++) pw += A[Math.floor(Math.random() * A.length)];
-    Q.run('UPDATE users SET pass_hash=? WHERE id=?', hashPassword(pw), uid);
+    Q.run('UPDATE users SET pass_hash=?, weak_pw=0 WHERE id=?', hashPassword(pw), uid);
     Q.run('DELETE FROM sessions WHERE user_id=?', uid);
     return { password: pw, login: Q.get('SELECT login FROM users WHERE id=?', uid).login };
   });
@@ -600,13 +632,18 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     }
     return { open, exam, plan };
   }
-  const examRow = (lid, uid) => Q.get('SELECT count, blocked, last_type FROM exam_violations WHERE lesson_id=? AND user_id=?', lid, uid) || { count: 0, blocked: 0 };
+  const examRow = (lid, uid) => Q.get('SELECT count, blocked, last_type, accepted_at, finished_at FROM exam_violations WHERE lesson_id=? AND user_id=?', lid, uid) || { count: 0, blocked: 0, accepted_at: null, finished_at: null };
   function assertProblemAccess(u, pid) {
     if (u.role === 'teacher') return;
     const { open, exam } = studentAccess(u.id);
     if (!open.has(pid)) throw forbidden('Ин масъала ҳанӯз кушода нашудааст — устод рӯзро мекушояд.');
     const lid = exam.get(pid);
-    if (lid && examRow(lid, u.id).blocked) throw new HttpError(403, 'Шумо аз ин имтиҳон блок шудед (3 вайронкунӣ). Ба устод муроҷиат кунед.', { blocked: true });
+    if (lid) {
+      const e = examRow(lid, u.id);
+      if (e.blocked) throw new HttpError(403, 'Шумо аз ин имтиҳон блок шудед (3 вайронкунӣ). Ба устод муроҷиат кунед.', { blocked: true });
+      if (!e.accepted_at) throw new HttpError(403, 'Аввал шартҳои имтиҳонро хонед ва қабул кунед.', { needAccept: true, lesson_id: lid });
+      if (e.finished_at) throw new HttpError(403, 'Шумо ин имтиҳонро тамом кардед.', { finished: true, lesson_id: lid });
+    }
   }
   function lessonSets(l) {
     const cls = Q.all("SELECT problem_id FROM lesson_steps WHERE lesson_id=? AND kind='problem' AND skipped=0 AND problem_id IS NOT NULL ORDER BY position", l.id).map(r => r.problem_id);
@@ -656,7 +693,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     if (l.kind === 'exam' && user.role === 'student') {
       const e = examRow(l.id, user.id);
       if (e.blocked) throw new HttpError(403, 'Шумо аз ин имтиҳон блок шудед (3 вайронкунӣ). Танҳо устод метавонад шуморо боз кунад.', { blocked: true });
-      exam = { count: e.count, max: 3 };
+      exam = { count: e.count, max: 3, accepted: !!e.accepted_at, finished: !!e.finished_at };
     }
     const sets = lessonSets(l);
     const solved = user.role === 'student' ? solvedSet(user.id) : new Set();
@@ -675,7 +712,9 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     if (l.kind !== 'exam') throw bad('Ин имтиҳон нест.');
     const prev = Q.get('SELECT * FROM exam_violations WHERE lesson_id=? AND user_id=?', l.id, user.id);
     if (prev?.blocked) return { count: prev.count, blocked: true };
-    if (prev && Date.now() - Date.parse(prev.updated_at) < 2500) return { count: prev.count, blocked: false, ignored: true }; // як амал — як вайронкунӣ
+    if (!prev?.accepted_at || prev.finished_at) return { count: prev?.count || 0, blocked: false, ignored: true }; // ҳанӯз ворид нашудааст ё тамом кард
+    const lastEv = Q.get('SELECT created_at FROM exam_events WHERE lesson_id=? AND user_id=? ORDER BY id DESC LIMIT 1', l.id, user.id);
+    if (lastEv && Date.now() - Date.parse(lastEv.created_at) < 1000) return { count: prev.count, blocked: false, ignored: true }; // як амал (масалан, blur + visibilitychange) — як вайронкунӣ
     const type = String(body.type || 'other').slice(0, 20);
     Q.run(`INSERT INTO exam_violations (lesson_id, user_id, count, last_type) VALUES (?,?,1,?)
       ON CONFLICT(lesson_id, user_id) DO UPDATE SET count=count+1, last_type=excluded.last_type, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')`, l.id, user.id, type);
@@ -683,17 +722,40 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     const r = Q.get('SELECT count FROM exam_violations WHERE lesson_id=? AND user_id=?', l.id, user.id);
     const blocked = r.count >= 3;
     if (blocked) Q.run('UPDATE exam_violations SET blocked=1 WHERE lesson_id=? AND user_id=?', l.id, user.id);
-    publish([Q.get('SELECT teacher_id FROM groups WHERE id=?', l.group_id).teacher_id], { type: 'exam', lesson_id: l.id, group_id: l.group_id, user_id: user.id });
+    publish([Q.get('SELECT teacher_id FROM groups WHERE id=?', l.group_id).teacher_id], { type: 'exam', lesson_id: l.id, group_id: l.group_id, user_id: user.id, name: user.name, count: r.count, blocked, vtype: type, lesson_title: l.title });
     return { count: r.count, blocked };
+  });
+  // Шогирд шартҳои имтиҳонро хонд ва қабул кард — баъд масъалаҳо кушода мешаванд
+  R('POST', '/api/lessons/:id/exam/accept', ({ user, params }) => {
+    need(user, 'student'); const l = lessonFor(user, Number(params.id));
+    if (l.kind !== 'exam') throw bad('Ин имтиҳон нест.');
+    if (isLocked(user, l)) throw forbidden('Ин рӯз ҳанӯз кушода нашудааст — устод онро мекушояд.');
+    const e = examRow(l.id, user.id);
+    if (e.blocked) throw new HttpError(403, 'Шумо аз ин имтиҳон блок шудед. Танҳо устод метавонад шуморо боз кунад.', { blocked: true });
+    Q.run(`INSERT INTO exam_violations (lesson_id, user_id, count, accepted_at) VALUES (?,?,0,strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+      ON CONFLICT(lesson_id, user_id) DO UPDATE SET accepted_at=COALESCE(accepted_at, excluded.accepted_at)`, l.id, user.id);
+    publish([Q.get('SELECT teacher_id FROM groups WHERE id=?', l.group_id).teacher_id], { type: 'exam', lesson_id: l.id, group_id: l.group_id, user_id: user.id, name: user.name, accepted: true });
+    return { ok: true };
+  });
+  // Шогирд имтиҳонро худаш тамом кард — баъд аз ин назорат қатъ мешавад ва масъалаҳо баста мешаванд
+  R('POST', '/api/lessons/:id/exam/finish', ({ user, params }) => {
+    need(user, 'student'); const l = lessonFor(user, Number(params.id));
+    if (l.kind !== 'exam') throw bad('Ин имтиҳон нест.');
+    const e = examRow(l.id, user.id);
+    if (!e.accepted_at) throw bad('Шумо ҳанӯз ба имтиҳон ворид нашудаед.');
+    Q.run("UPDATE exam_violations SET finished_at=COALESCE(finished_at, strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE lesson_id=? AND user_id=?", l.id, user.id);
+    publish([Q.get('SELECT teacher_id FROM groups WHERE id=?', l.group_id).teacher_id], { type: 'exam', lesson_id: l.id, group_id: l.group_id, user_id: user.id, name: user.name, finished: true });
+    return { ok: true };
   });
   R('GET', '/api/lessons/:id/exam', ({ user, params }) => {
     need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
-    return members(l.group_id).map(m => { const e = examRow(l.id, m.id); return { user: m, count: e.count, blocked: !!e.blocked, last_type: e.last_type || null }; });
+    return members(l.group_id).map(m => { const e = examRow(l.id, m.id); return { user: m, count: e.count, blocked: !!e.blocked, last_type: e.last_type || null, accepted_at: e.accepted_at || null, finished_at: e.finished_at || null }; });
   });
   R('POST', '/api/lessons/:id/unblock', ({ user, params, body }) => {
     need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
-    Q.run('UPDATE exam_violations SET count=0, blocked=0 WHERE lesson_id=? AND user_id=?', l.id, Number(body.user_id));
-    publish([Number(body.user_id)], { type: 'lesson', lesson_id: l.id, group_id: l.group_id });
+    Q.run('UPDATE exam_violations SET count=0, blocked=0, finished_at=NULL WHERE lesson_id=? AND user_id=?', l.id, Number(body.user_id));
+    publish([Number(body.user_id)], { type: 'lesson', lesson_id: l.id, group_id: l.group_id, unblocked: true });
+    publish([user.id], { type: 'exam', lesson_id: l.id, group_id: l.group_id, user_id: Number(body.user_id), unblocked: true });
     return { ok: true };
   });
   R('PUT', '/api/lessons/:id/sets', ({ user, params, body }) => {
@@ -962,7 +1024,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   R('GET', '/api/events', ({ user, res }) => {
     need(user);
     res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
-    res.write(`data: ${JSON.stringify({ type: 'hello' })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'hello', build: buildId() })}\n\n`);
     if (!streams.has(user.id)) streams.set(user.id, new Set());
     streams.get(user.id).add(res);
     res.on('close', () => streams.get(user.id)?.delete(res));
@@ -976,7 +1038,17 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     if (p === '/' || !path.extname(p)) p = '/index.html';
     const f = path.join(staticDir, path.normalize(p).replace(/^(\.\.[/\\])+/, ''));
     if (!f.startsWith(staticDir) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); return res.end('Not found'); }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream', 'Cache-Control': p === '/index.html' || p === '/sw.js' ? 'no-cache' : 'public, max-age=300' });
+    if (p === '/index.html') {
+      // Ба app.js ва styles.css версия илова мешавад (?v=…): пас аз навсозӣ браузер ҳатман нусхаи навро мегирад
+      const b = buildId();
+      const page = fs.readFileSync(f, 'utf8').replace(/\.\/(app\.js|styles\.css)"/g, `./$1?v=${b}"`).replace('<head>', `<head>\n<meta name="build" content="${b}">`);
+      res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-cache' });
+      return res.end(page);
+    }
+    const cache = p === '/sw.js' ? 'no-cache'
+      : url.searchParams.has('v') || p.startsWith('/fonts/') ? 'public, max-age=31536000, immutable'
+      : 'no-cache';
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream', 'Cache-Control': cache });
     fs.createReadStream(f).pipe(res);
   }
   const cookieOf = req => Object.fromEntries((req.headers.cookie || '').split(';').map(c => c.trim().split('=')).filter(x => x[0]));
@@ -985,7 +1057,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     const url = new URL(req.url, 'http://x');
     if (!url.pathname.startsWith('/api/')) return serveStatic(req, res, url);
     const route = routes.find(r => r.method === req.method && r.rx.test(url.pathname));
-    const send = (status, obj, headers = {}) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers }); res.end(JSON.stringify(obj)); };
+    const send = (status, obj, headers = {}) => { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Build': buildId(), ...headers }); res.end(JSON.stringify(obj)); };
     if (!route) return send(404, { error: 'Масир ёфт нашуд.' });
     try {
       let body = {};

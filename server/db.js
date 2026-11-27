@@ -226,6 +226,7 @@ CREATE TABLE IF NOT EXISTS exam_events (
 CREATE INDEX IF NOT EXISTS idx_sub_user_problem ON submissions(user_id, problem_id);
 CREATE INDEX IF NOT EXISTS idx_sub_lesson ON submissions(lesson_id);
 CREATE INDEX IF NOT EXISTS idx_help_group ON help_requests(group_id, status);
+CREATE INDEX IF NOT EXISTS idx_exam_ev ON exam_events(lesson_id, user_id, id);
 `;
 
 export function openDb(file) {
@@ -242,6 +243,11 @@ export function openDb(file) {
   if (!cols.includes('extra_problem_ids')) db.exec("ALTER TABLE lessons ADD COLUMN extra_problem_ids TEXT NOT NULL DEFAULT '[]'");
   const gcols = db.prepare('PRAGMA table_info(groups)').all().map(c => c.name);
   if (!gcols.includes('lock_days')) db.exec('ALTER TABLE groups ADD COLUMN lock_days INTEGER NOT NULL DEFAULT 0');
+  const ecols = db.prepare('PRAGMA table_info(exam_violations)').all().map(c => c.name);
+  if (!ecols.includes('accepted_at')) db.exec('ALTER TABLE exam_violations ADD COLUMN accepted_at TEXT');
+  if (!ecols.includes('finished_at')) db.exec('ALTER TABLE exam_violations ADD COLUMN finished_at TEXT');
+  const ucols = db.prepare('PRAGMA table_info(users)').all().map(c => c.name);
+  if (!ucols.includes('weak_pw')) db.exec('ALTER TABLE users ADD COLUMN weak_pw INTEGER NOT NULL DEFAULT 0');
   return db;
 }
 

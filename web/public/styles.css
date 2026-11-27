@@ -371,3 +371,159 @@ a.btn, a.btn:hover { text-decoration: none; }
   .examguard { font-size: 13px; }
 }
 @media (max-width: 520px) { .chip { white-space: normal; max-width: 100%; } }
+
+/* ════════ Тарҳи нав (мисли намуна): сарлавҳаи шинокунанда, саҳифаи масъала, имтиҳон ════════ */
+.top { margin: 10px 12px 0; top: 10px; border: 1px solid var(--line); border-radius: 16px; padding: 8px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.22); }
+.userpill { display: inline-flex; align-items: center; gap: 10px; padding: 4px 12px 4px 4px; border-radius: 12px; border: 1px solid var(--line); color: var(--text); background: var(--panel2); min-width: 0; }
+.userpill:hover { text-decoration: none; border-color: var(--acc); }
+.avatar { width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(135deg, var(--acc), #60a5fa); color: #04121a; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.uinfo { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.uinfo b { font-size: 13.5px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uinfo small { color: var(--muted); font-size: 11.5px; }
+body.exam-on .top .nav, body.exam-on .top .logo, body.exam-on .top .userpill { pointer-events: none; opacity: .45; }
+
+.toast.big { top: 86px; bottom: auto; font-size: 18px; font-weight: 700; padding: 16px 22px; border: 2px solid var(--bad); background: var(--panel); max-width: min(760px, calc(100vw - 32px)); cursor: pointer; }
+.slowload { margin: 16px auto 0; max-width: 480px; font-size: 15px; color: var(--text); display: flex; flex-direction: column; gap: 12px; align-items: center; }
+
+.weakpw { padding: 12px 12px 0; }
+.weakpw-in { max-width: 1240px; margin: 0 auto; padding: 16px 18px; border-radius: 16px; border: 2px solid var(--bad); background: var(--bad-bg); display: flex; flex-direction: column; gap: 10px; }
+.weakpw-t { font-size: 20px; font-weight: 800; color: var(--bad); }
+.weakpw .row .i { flex: 1; min-width: 180px; }
+
+/* Саҳифаи маҷмӯа: рӯйхат дар чап (часпанда), масъала дар рост */
+.setlay { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 18px; align-items: start; height: auto; padding: 16px 12px 28px; max-width: 1560px; width: 100%; margin: 0 auto; }
+.setside { position: sticky; top: 86px; max-height: calc(100vh - 100px); overflow: auto; border: 1px solid var(--line); border-radius: 20px; padding: 16px; background: var(--panel); display: flex; flex-direction: column; gap: 12px; }
+.setmain { min-width: 0; }
+.backlink { color: var(--muted); font-weight: 600; }
+.kicker.acc { color: var(--acc); }
+.settabs { display: flex; gap: 6px; }
+.settab { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 8px 4px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); font-weight: 700; font-size: 13.5px; text-align: center; }
+.settab small { color: var(--muted); font-weight: 600; }
+.settab.on { border-color: var(--acc); background: var(--acc-soft); color: var(--acc); }
+.settab:hover { text-decoration: none; border-color: var(--acc); }
+.progcard { padding: 14px; border-radius: 16px; border: 1px solid var(--line); background: var(--panel2); }
+.progcard .row { gap: 10px; }
+.pico { width: 34px; height: 34px; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; background: var(--ok-bg); font-size: 17px; flex: none; }
+.pnum { color: var(--ok); font-size: 17px; }
+.progcard .bar { height: 8px; margin-top: 12px; }
+.progcard .bar > i { background: var(--ok); }
+.pdone { text-align: center; color: var(--ok); font-weight: 700; font-size: 13.5px; margin-top: 10px; }
+.listcard { padding: 12px; border-radius: 16px; border: 1px solid var(--line); background: var(--panel2); display: flex; flex-direction: column; gap: 10px; }
+.pnum2 { color: var(--text); font-size: 16px; }
+.setlist { gap: 4px; }
+.setitem { gap: 10px; padding: 11px 12px; border-radius: 12px; border: 1px solid transparent; background: transparent; }
+.setitem:hover { background: var(--panel3); border-color: transparent; }
+.setitem .n, .setitem.solved .n { width: 28px; height: 28px; border-radius: 8px; border: 1.5px solid color-mix(in srgb, var(--ok) 60%, transparent); color: var(--ok); background: transparent; font-size: 13px; font-weight: 800; }
+.setitem .ok { width: 22px; height: 22px; border-radius: 50%; background: var(--ok); color: #04210f; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; flex: none; }
+.setitem .ok.no { background: transparent; border: 1.5px solid var(--line); }
+.setitem.on { background: linear-gradient(90deg, #15803d, #166534); border-color: transparent; color: #fff; }
+.setitem.on .n { border-color: rgba(255,255,255,.65); color: #fff; background: rgba(255,255,255,.12); }
+.setitem.on .ok { background: #fff; color: #15803d; }
+.setitem.on .ok.no { background: transparent; border-color: rgba(255,255,255,.6); }
+.finishbtn { width: 100%; min-height: 46px; border-color: color-mix(in srgb, var(--warn) 55%, transparent); color: var(--warn); background: var(--warn-bg); font-size: 15px; }
+.examguard { font-size: 14.5px; }
+
+/* Масъала: як корти калон — шарт, мисол, муҳаррир, тугмаҳо, натиҷа */
+.wsx-wrap { padding: 16px 12px 28px; max-width: 1180px; width: 100%; margin: 0 auto; }
+.setmain .wsx-wrap { padding: 0; max-width: none; }
+.wsx { background: var(--panel); border: 1px solid var(--line); border-radius: 20px; padding: 26px 30px 22px; }
+.wsx-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.wsx-title { margin: 0; font-size: 28px; line-height: 1.25; font-weight: 800; }
+.wsx-title .ttl { color: var(--acc); }
+.pill-ok { color: var(--ok); background: var(--ok-bg); border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+.pill-warn { color: var(--warn); background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.pill-exam { color: var(--info); background: var(--info-bg); border-color: color-mix(in srgb, var(--info) 40%, transparent); }
+.wsx-exit { color: var(--bad); font-weight: 700; display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 10px; }
+.wsx-exit:hover { background: var(--bad-bg); text-decoration: none; }
+.wsx-meta { display: flex; gap: 6px; flex-wrap: wrap; margin: 12px 0 18px; }
+.stmt { white-space: pre-wrap; font-size: 17px; line-height: 1.7; max-width: 920px; }
+.io-desc { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 16px; max-width: 920px; font-size: 16px; }
+.io-desc p { margin: 0; }
+.lbl { font-weight: 800; margin-bottom: 4px; }
+.sample { margin-top: 22px; padding: 16px 18px; border-radius: 16px; background: var(--panel2); border: 1px solid var(--line); max-width: 920px; font-size: 15.5px; }
+.sample-h { margin-bottom: 2px; }
+.sample-pre { font-family: var(--mono); font-size: 16px; margin: 6px 0 12px; padding: 10px 14px; border-radius: 10px; background: var(--bg); border: 1px solid var(--line); }
+.sample-why { color: var(--muted); margin-bottom: 10px; }
+.linkbtn { background: none; border: 0; color: var(--acc); font-weight: 700; cursor: pointer; padding: 4px 0; font-size: 14.5px; font-family: inherit; }
+.linkbtn:hover { text-decoration: underline; }
+.hints { margin-top: 18px; max-width: 920px; }
+.wsx-sec { font-size: 20px; margin: 28px 0 10px; }
+.edbox { border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--panel2); }
+.edbar { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+.edbar-t { margin-left: 6px; }
+.edwrap { height: 460px; }
+.edwrap .cm-editor { height: 100%; }
+.edbox.full { position: fixed; inset: 0; z-index: 90; border-radius: 0; display: flex; flex-direction: column; }
+.edbox.full .edwrap { flex: 1; height: auto; min-height: 0; }
+.wsx-actions { display: flex; align-items: center; gap: 12px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.btn.big { min-height: 48px; padding: 10px 22px; font-size: 16px; border-radius: 12px; }
+.btn.ghostline { background: transparent; }
+.btn.ghostline:hover { background: var(--panel2); }
+.btn .ico { flex: none; }
+.navbtn { width: 46px; height: 46px; border-radius: 12px; border: 1px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-size: 26px; line-height: 1; color: var(--text); background: var(--panel2); }
+.navbtn:hover { border-color: var(--acc); text-decoration: none; }
+.navbtn.off { opacity: .35; pointer-events: none; }
+.wsx .out { margin-top: 18px; border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; background: var(--panel2); overflow: visible; scroll-margin: 90px; }
+.wsx .out .tabs { position: static; background: transparent; }
+.excard { padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel2); }
+.mbar { display: none; }
+
+/* Имтиҳон: шартҳо, огоҳӣ, блок, анҷом */
+.examgate, .examdone { max-width: 760px; margin: 3vh auto; padding: 32px 34px; border-radius: 22px; border: 1px solid var(--line); background: var(--panel); box-shadow: var(--shadow); }
+.eg-ico { font-size: 54px; line-height: 1; }
+.examgate h1, .examdone h1 { font-size: 30px; margin: 6px 0 4px; }
+.eg-lead { font-size: 18px; color: var(--muted); margin: 8px 0; }
+.rules { font-size: 18px; line-height: 1.55; padding-left: 26px; margin: 14px 0 18px; }
+.rules li { margin: 9px 0; }
+.eg-check { display: flex; align-items: center; gap: 12px; font-size: 18px; padding: 14px 16px; border-radius: 14px; border: 2px solid var(--acc); background: var(--acc-soft); cursor: pointer; }
+.eg-check input { width: 24px; height: 24px; accent-color: var(--acc); flex: none; }
+.eg-btns { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+.examwarn-bg { position: fixed; inset: 0; z-index: 150; background: rgba(5,8,16,.8); backdrop-filter: blur(6px); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.examwarn { max-width: 540px; width: 100%; text-align: center; padding: 30px 28px; border-radius: 22px; background: var(--panel); border: 2px solid var(--bad); box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+.ew-ico { font-size: 60px; line-height: 1; }
+.examwarn h2 { font-size: 30px; margin: 10px 0 6px; color: var(--bad); }
+.ew-why { font-size: 19px; margin: 8px 0; }
+.ew-dots { display: flex; gap: 12px; justify-content: center; margin: 16px 0; }
+.ew-dots span { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--bad); }
+.ew-dots span.on { background: var(--bad); }
+.ew-left { font-weight: 700; color: var(--warn); font-size: 17px; margin-bottom: 18px; }
+.blocked { max-width: 640px; padding: 40px 34px; }
+.blocked h1 { font-size: 32px; }
+.blocked p { font-size: 18px; }
+.examdone-list { display: flex; flex-direction: column; gap: 6px; margin: 16px 0 22px; }
+.exammon .emrow { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.emname { flex: 1; min-width: 140px; }
+
+@media (max-width: 900px) {
+  .setlay { display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 10px 8px 0; height: auto; }
+  .setlay > *, .listcard, .setlist { min-width: 0; }
+  .setside { position: static; max-height: none; padding: 12px; border-radius: 16px; gap: 10px; }
+  .setside .progcard, .setside .setlesson { display: none; }
+  .listcard { padding: 8px; }
+  .setlist { flex-direction: row; overflow-x: auto; }
+  .setitem { flex: none; }
+  .setitem .t { white-space: nowrap; }
+}
+@media (max-width: 760px) {
+  .top { margin: 6px 6px 0; top: 6px; flex-wrap: wrap; row-gap: 4px; gap: 6px; padding: 6px 8px; }
+  .top .logo { font-size: 14px; }
+  .top > .btn.ghost.sm { padding: 4px 8px; }
+  .top .nav { display: flex; order: 10; width: 100%; flex-wrap: nowrap; overflow-x: auto; }
+  .uinfo { display: none; }
+  .userpill { padding: 3px; }
+  .wsx-wrap { padding: 8px 6px 0; }
+  .wsx { padding: 18px 14px; border-radius: 16px; }
+  .wsx-title { font-size: 22px; }
+  .stmt { font-size: 16px; }
+  .edwrap { height: 56vh; }
+  .wsx-actions .btn.big { display: none; }
+  .wsx-actions { margin-top: 12px; padding-top: 12px; }
+  .mbar { display: flex; position: sticky; bottom: 0; gap: 8px; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(8px); border-top: 1px solid var(--line); z-index: 20; margin-top: 10px; }
+  .mbar .btn { flex: 1; min-height: 46px; }
+  .examgate, .examdone { padding: 22px 18px; margin: 2vh 6px; }
+  .rules, .eg-check { font-size: 16.5px; }
+  .toast.big { top: 70px; }
+}
+
+.examwarn.calm { border-color: var(--acc); }
+.examwarn.calm h2 { color: var(--text); }

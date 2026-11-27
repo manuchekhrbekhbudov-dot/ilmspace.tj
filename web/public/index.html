@@ -11,7 +11,8 @@
 <script>try{var t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
 <body>
-<div id="app"><div class="loading">Бор мешавад…</div></div>
+<div id="app"><div class="loading boot">Бор мешавад…</div></div>
+<script>setTimeout(function(){var b=document.querySelector('#app .boot');if(b)b.innerHTML='Сайт дер бор мешавад. <button class="btn sm" onclick="location.reload()">Аз нав бор кун</button>'},15000)</script>
 <noscript>Барои кор бо ILMSPACE CodeLab JavaScript-ро фаъол кунед.</noscript>
 <script type="module" src="./app.js"></script>
 </body>

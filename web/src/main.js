@@ -4,7 +4,7 @@ import { StudentHome, ProblemsList, StudentLesson } from './student.js';
 import { TeacherHome, GroupPage, Report, StudentProgress } from './teacher.js';
 import { LiveLesson, ProjectorScreen } from './live.js';
 import { ProblemEditor, TemplateEditor } from './authoring.js';
-import { CourseMap, SetPage } from './course.js';
+import { CourseMap, SetPage, VIOL } from './course.js';
 
 function useHash() {
   const [h, setH] = useState(location.hash || '#/');
@@ -38,7 +38,7 @@ function Header({ user, hash, onLogout, judge, storage }) {
     ${user.role === 'teacher' && storage?.mode === 'postgres' && storage.lastError && html`<span class="net" title=${storage.lastError}>Нусха ба база нарафт</span>`}
     ${user.role === 'teacher' && judge?.ok && judge.warning && html`<span class="net" title=${judge.warning}>Санҷандаи маҳаллӣ бе ҷудокунӣ</span>`}
     <button class="btn ghost icon-btn" onClick=${toggleTheme} title="Мавзӯи торик/равшан" aria-label="Мавзӯи торик/равшан">◐</button>
-    <a class="btn ghost sm" href="#/profile" title="Ном, логин ва парол">👤 <span class="uname">${user.name}${user.role === 'teacher' ? ' · устод' : ''}</span></a>
+    <a class="userpill" href="#/profile" title="Ҳисоби ман: ном, логин ва парол"><span class="avatar" aria-hidden="true">${(user.name || '?').trim().charAt(0).toUpperCase()}</span><span class="uinfo"><b class="uname">${user.name}</b><small>${user.role === 'teacher' ? 'устод' : 'шогирд'} · ${user.login}</small></span></a>
     <button class="btn ghost sm" onClick=${onLogout}>Баромад</button>
   </header>`;
 }
@@ -104,6 +104,30 @@ function Profile({ me, onSaved }) {
   </div>`;
 }
 
+// Ҳисоб бо пароли намоишии оммавӣ («ilmspace»): ҳар кас метавонад ворид шавад — фавран иваз кунед
+function WeakPassword({ me, onSaved }) {
+  const [a, setA] = useState(''); const [b, setB] = useState('');
+  const [err, setErr] = useState(null); const [busy, setBusy] = useState(false);
+  const save = async e => {
+    e.preventDefault(); setErr(null);
+    if (a.length < 8) return setErr('Пароли нав бояд ҳадди ақал 8 аломат бошад.');
+    if (a !== b) return setErr('Ду парол якхела нестанд. Боз як бор нависед.');
+    setBusy(true);
+    try { const r = await api('/api/me', { method: 'PUT', body: { current_password: 'ilmspace', new_password: a } }); onSaved(r.user); toast('✓ Пароли нав гузошта шуд. Онро дар хотир нигоҳ доред.'); }
+    catch (x) { setErr(x.message); } finally { setBusy(false); }
+  };
+  return html`<div class="weakpw" role="alert"><form class="weakpw-in" onSubmit=${save} noValidate>
+    <div class="weakpw-t">⚠️ Пароли шумо <b>ilmspace</b> аст — онро ҳама медонанд!</div>
+    <div class="weakpw-s">Ин пароли намоишӣ дар интернет навишта шудааст. Ҳар кас метавонад бо ҳисоби <b>${me.login}</b> ворид шавад${me.role === 'teacher' ? ' ва, масалан, блоки имтиҳонро бардорад' : ''}. Ҳозир пароли нав гузоред:</div>
+    <div class="row">
+      <input class="i" type="password" autocomplete="new-password" placeholder="Пароли нав (8+ аломат)" aria-label="Пароли нав" value=${a} onInput=${e => setA(e.target.value)} />
+      <input class="i" type="password" autocomplete="new-password" placeholder="Боз як бор" aria-label="Пароли нав боз як бор" value=${b} onInput=${e => setB(e.target.value)} />
+      <button class="btn p" disabled=${busy}>Нигоҳ дор</button>
+    </div>
+    ${err && html`<div class="err">${err}</div>`}
+  </form></div>`;
+}
+
 function App() {
   const [me, setMe] = useState(undefined);
   const [judge, setJudge] = useState(null);
@@ -113,6 +137,12 @@ function App() {
   useEffect(() => { load(); }, []);
   useEffect(() => { if (me) { store.set('me', me); connectEvents(); } else disconnectEvents(); }, [me?.id]);
   useEvents(ev => {
+    if (me?.role === 'teacher' && ev.type === 'exam' && ev.name) {
+      if (ev.blocked) toast(`⛔ ${ev.name} аз имтиҳон блок шуд (3 вайронкунӣ). Дар «Шогирдон» ё дар рӯзи имтиҳон «Блокро бардор»-ро пахш кунед.`, { big: true });
+      else if (ev.count) toast(`⚠ ${ev.name}: вайронкунӣ ${ev.count} аз 3 — ${VIOL[ev.vtype]?.[0] || ev.vtype}`);
+      else if (ev.finished) toast(`🏁 ${ev.name} имтиҳонро тамом кард.`);
+      return;
+    }
     if (me?.role !== 'student') return;
     if (ev.type === 'comment') toast('💬 Устод ба коди шумо шарҳ гузошт. Масъаларо кушоед → «Кӯшишҳо».');
     if (ev.type === 'help' && ev.action === 'take') toast('✋ Устод дархости шуморо гирифт — ҳозир ёрӣ медиҳад.');
@@ -131,7 +161,7 @@ function App() {
   const T = me.role === 'teacher';
   if (!seg.length) page = T ? html`<${TeacherHome} />` : html`<${StudentHome} user=${me} />`;
   else if (seg[0] === 'course') page = html`<${CourseMap} key=${seg[1] || 'mine'} gid=${seg[1] ? Number(seg[1]) : null} />`;
-  else if (seg[0] === 'set') page = html`<${SetPage} key=${seg.slice(1, 3).join('-')} user=${me} lid=${seg[1]} kind=${seg[2]} idx=${seg[3]} />`;
+  else if (seg[0] === 'set') page = html`<${SetPage} key=${seg[1]} user=${me} lid=${seg[1]} kind=${seg[2]} idx=${seg[3]} />`;
   else if (seg[0] === 'profile') page = html`<${Profile} me=${me} onSaved=${u => setMe(u)} />`;
   else if (seg[0] === 'problems') page = html`<${ProblemsList} user=${me} />`;
   else if (seg[0] === 'p' && !T) page = html`<${Workspace} key=${seg[1] + (q.lesson || '')} user=${me} pid=${Number(seg[1])} lessonId=${q.lesson ? Number(q.lesson) : null} />`;
@@ -143,7 +173,7 @@ function App() {
   else if (seg[0] === 'problem' && T) page = html`<${ProblemEditor} key=${seg[1]} id=${seg[1]} />`;
   else if (seg[0] === 'template' && T) page = html`<${TemplateEditor} key=${seg[1]} id=${seg[1]} />`;
   else page = html`<div class="page"><div class="empty"><h3>Саҳифа ёфт нашуд</h3><a href="#/">Ба саҳифаи асосӣ</a></div></div>`;
-  return html`<${Header} user=${me} hash=${hash} onLogout=${logout} judge=${judge} storage=${storage} />${page}`;
+  return html`<${Header} user=${me} hash=${hash} onLogout=${logout} judge=${judge} storage=${storage} />${me.weak_pw ? html`<${WeakPassword} me=${me} onSaved=${u => setMe(u)} />` : ''}${page}`;
 }
 
 render(html`<${App} />`, document.getElementById('app'));

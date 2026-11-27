@@ -103,18 +103,34 @@ function DayPanel({ d, role, onClose, onChanged }) {
 }
 
 // Устод: вайронкуниҳои имтиҳон ва бардоштани блок
+// Намудҳои вайронкунӣ: [барои устод, барои шогирд]
+export const VIOL = {
+  copy: ['нусха кард (copy)', 'Нусха кардан (copy) дар имтиҳон манъ аст.'],
+  cut: ['бурид (cut)', 'Буридани матн (cut) дар имтиҳон манъ аст.'],
+  paste: ['гузошт (paste)', 'Гузоштани матн (paste) дар имтиҳон манъ аст.'],
+  drop: ['матн кашида овард', 'Кашида овардани матн дар имтиҳон манъ аст.'],
+  leave: ['ба равзанаи дигар рафт', 'Рафтан ба равзана, ҷадвалча ё барномаи дигар манъ аст.'],
+  back: ['аз имтиҳон баромад', 'Баромадан аз саҳифаи имтиҳон (тугмаи «Ақиб») манъ аст.'],
+  fullscreen: ['аз экрани пурра баромад', 'Баромадан аз экрани пурра (Esc) манъ аст.'],
+  key: ['тугмаи Windows', 'Пахш кардани тугмаи Windows манъ аст.'],
+  print: ['скриншот', 'Скриншот (PrintScreen) манъ аст.'],
+};
+
 function ExamMonitor({ lid }) {
   const [{ data }, reload] = useLoad(() => api(`/api/lessons/${lid}/exam`), [lid]);
   useEvents(ev => { if (ev.type === 'exam' && Number(ev.lesson_id) === Number(lid)) reload(true); }, [lid]);
   if (!data) return null;
-  const TYPE = { copy: 'нусхабардорӣ', paste: 'гузоштан (paste)', cut: 'буридан', leave: 'рафтан ба равзанаи дигар' };
-  const unblock = async uid => { try { await api(`/api/lessons/${lid}/unblock`, { method: 'POST', body: { user_id: uid } }); toast('Блок бардошта шуд.'); reload(true); } catch (e) { toast(e.message); } };
-  const shown = data.filter(r => r.count > 0 || r.blocked);
-  return html`<div class="card"><h3>Назорати имтиҳон</h3>
-    ${!shown.length ? html`<div class="muted small">Ҳанӯз вайронкунӣ нест.</div>` : shown.map(r => html`<div class="row" style="padding:6px 0;border-bottom:1px solid var(--line)">
-      <b style="flex:1">${r.user.name}</b><span class=${'v ' + (r.blocked ? 'v-bad' : 'v-warn')}>${r.blocked ? '⛔ Блок' : `⚠ ${r.count}/3`}</span>
-      <span class="small muted">${TYPE[r.last_type] || ''}</span>
-      ${r.blocked && html`<button class="btn sm p" onClick=${() => unblock(r.user.id)}>Блокро бардор</button>`}</div>`)}
+  const unblock = async (uid, what) => { try { await api(`/api/lessons/${lid}/unblock`, { method: 'POST', body: { user_id: uid } }); toast(what); reload(true); } catch (e) { toast(e.message); } };
+  const inExam = data.filter(r => r.accepted_at).length, blocked = data.filter(r => r.blocked).length;
+  const st = r => r.blocked ? ['⛔ Блок', 'v-bad'] : r.finished_at ? ['✓ Тамом кард', 'v-ok'] : r.count ? [`⚠ ${r.count}/3`, 'v-warn'] : r.accepted_at ? ['● Дар имтиҳон', 'v-info'] : ['Ворид нашудааст', 'v-none'];
+  return html`<div class="card exammon"><h3>Назорати имтиҳон</h3>
+    <div class="small muted" style="margin-bottom:6px">Ворид шуданд: <b>${inExam}</b> аз ${data.length} · Блок: <b>${blocked}</b></div>
+    ${!data.length ? html`<div class="muted small">Дар гурӯҳ шогирд нест.</div>` : data.map(r => { const [t, c] = st(r); return html`<div class="emrow">
+      <b class="emname">${r.user.name}</b><span class=${'v ' + c}>${t}</span>
+      <span class="small muted">${r.last_type ? VIOL[r.last_type]?.[0] || r.last_type : ''}</span>
+      ${r.blocked ? html`<button class="btn sm p" onClick=${() => unblock(r.user.id, 'Блок бардошта шуд — шогирд боз ворид мешавад.')}>Блокро бардор</button>`
+        : r.finished_at ? html`<button class="btn sm" onClick=${() => unblock(r.user.id, 'Имтиҳон барои шогирд боз кушода шуд.')}>Боз кушо</button>` : ''}
+    </div>`; })}
   </div>`;
 }
 
@@ -134,57 +150,164 @@ function SetEditor({ d, sets, onClose, onSaved }) {
 }
 
 // Ҳифзи имтиҳон: нусхабардорӣ ва рафтан ба равзанаи дигар — вайронкунӣ (3 → блок)
-function useExamGuard(lid, enabled, onState) {
+const canFull = () => !!(document.fullscreenEnabled && document.documentElement.requestFullscreen);
+const goFull = () => { if (canFull() && !document.fullscreenElement) document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => {}); };
+const leaveFull = () => { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); };
+
+// Посбони имтиҳон: нусха/гузоштан манъ ва ҳисоб мешавад; рафтан ба равзанаи дигар, «Ақиб», баромадан аз экрани пурра,
+// тугмаи Windows ва PrintScreen — ҳар кадом 1 вайронкунӣ. 3 → блоки худкор (дар сервер).
+function useExamGuard(lid, active, onResult) {
   const last = useRef(0);
+  const cb = useRef(onResult); cb.current = onResult;
   useEffect(() => {
-    if (!enabled) return;
-    const report = async type => {
-      const now = Date.now(); if (now - last.current < 2500) return; last.current = now;
-      try { const r = await api(`/api/lessons/${lid}/violation`, { method: 'POST', body: { type } }); onState(r); }
-      catch {}
+    if (!active) return;
+    let unloading = false, alive = true;
+    const report = type => {
+      if (window.__codelabReloading || unloading || !alive) return;
+      const now = Date.now(); if (now - last.current < 1200) return; last.current = now;
+      api(`/api/lessons/${lid}/violation`, { method: 'POST', body: { type } }).then(r => cb.current({ ...r, type })).catch(() => {});
     };
-    const block = type => e => { e.preventDefault(); e.stopPropagation(); report(type); };
-    const onCopy = block('copy'), onCut = block('cut'), onPaste = block('paste');
-    const onCtx = e => e.preventDefault();
-    const onVis = () => { if (document.visibilityState === 'hidden') report('leave'); };
-    const onBlur = () => report('leave');
-    document.addEventListener('copy', onCopy, true); document.addEventListener('cut', onCut, true); document.addEventListener('paste', onPaste, true);
-    document.addEventListener('contextmenu', onCtx, true); document.addEventListener('visibilitychange', onVis); window.addEventListener('blur', onBlur);
+    const stop = type => e => { e.preventDefault(); e.stopPropagation(); report(type); };
+    const L = [
+      [document, 'copy', stop('copy'), true], [document, 'cut', stop('cut'), true], [document, 'paste', stop('paste'), true],
+      [document, 'drop', stop('drop'), true], [document, 'contextmenu', e => e.preventDefault(), true],
+      [document, 'visibilitychange', () => { if (document.visibilityState === 'hidden') report('leave'); }],
+      [window, 'blur', () => report('leave')],
+      [document, 'fullscreenchange', () => { if (canFull() && !document.fullscreenElement) report('fullscreen'); }],
+      [window, 'keydown', e => { if (e.key === 'Meta' || e.key === 'OS') report('key'); }, true],
+      [window, 'keyup', e => { if (e.key === 'PrintScreen') report('print'); }, true],
+      [window, 'pagehide', () => {
+        if (window.__codelabReloading || !alive) return;
+        unloading = true;
+        try { navigator.sendBeacon(`/api/lessons/${lid}/violation`, new Blob([JSON.stringify({ type: 'leave' })], { type: 'application/json' })); } catch {}
+      }],
+    ];
+    L.forEach(([t, ev, f, c]) => t.addEventListener(ev, f, !!c));
+    document.body.classList.add('exam-on');
     return () => {
-      document.removeEventListener('copy', onCopy, true); document.removeEventListener('cut', onCut, true); document.removeEventListener('paste', onPaste, true);
-      document.removeEventListener('contextmenu', onCtx, true); document.removeEventListener('visibilitychange', onVis); window.removeEventListener('blur', onBlur);
+      L.forEach(([t, ev, f, c]) => t.removeEventListener(ev, f, !!c));
+      document.body.classList.remove('exam-on');
+      // Аз саҳифаҳои ин имтиҳон баромад (тугмаи «Ақиб» ё пайванд) — вайронкунӣ
+      if (!window.__codelabReloading && !location.hash.startsWith(`#/set/${lid}/`)) report('back');
+      alive = false;
     };
-  }, [lid, enabled]);
+  }, [lid, active]);
 }
 
-/** Саҳифаи маҷмӯа: рӯйхати масъалаҳо дар чап, шарт ва муҳаррир дар рост */
+function ExamGate({ L, onAccept, busy, err }) {
+  const [ok, setOk] = useState(false);
+  return html`<div class="page"><div class="examgate">
+    <div class="eg-ico">🛡️</div>
+    <div class="kicker">Имтиҳон</div>
+    <h1>${L.title}</h1>
+    <p class="eg-lead">Пеш аз оғоз шартҳоро бодиққат хонед:</p>
+    <ol class="rules">
+      <li>Имтиҳон дар <b>экрани пурра</b> мегузарад.</li>
+      <li><b>Нусха кардан (copy)</b>, <b>гузоштан (paste)</b> ва кашида овардани матн <b>манъ</b> аст.</li>
+      <li>Рафтан ба <b>равзана, ҷадвалча ё барномаи дигар</b> (Alt+Tab, тугмаи Windows) <b>манъ</b> аст.</li>
+      <li>Баромадан аз экрани пурра (<b>Esc</b>), тугмаи <b>«Ақиб»</b> ва аз нав бор кардани саҳифа <b>манъ</b> аст.</li>
+      <li>Ҳар амали манъшуда — <b>1 вайронкунӣ</b>. Баъди <b>3 вайронкунӣ</b> шумо худкор <b>блок</b> мешавед.</li>
+      <li>Блокро <b>танҳо устод</b> бардошта метавонад.</li>
+      <li>Дар имтиҳон ишора нест. Вақте тамом кардед, «Имтиҳонро тамом кардам»-ро пахш кунед.</li>
+    </ol>
+    <label class="eg-check"><input type="checkbox" checked=${ok} onChange=${e => setOk(e.target.checked)} /> <span>Ман шартҳоро хондам ва <b>қабул дорам</b></span></label>
+    ${err && html`<div class="err" role="alert">${err}</div>`}
+    <div class="eg-btns"><button class="btn p lg" disabled=${!ok || busy} onClick=${onAccept}>${busy ? html`<span class="spin"></span>` : ''} Ба имтиҳон ворид шав</button><a class="btn lg" href="#/course">Ҳоло не</a></div>
+  </div></div>`;
+}
+
+function ExamWarn({ w, onClose }) {
+  const left = 3 - w.count;
+  return html`<div class="examwarn-bg" role="alertdialog" aria-modal="true" aria-labelledby="ew-h"><div class="examwarn">
+    <div class="ew-ico">⚠️</div>
+    <h2 id="ew-h">Вайронкунӣ ${w.count} аз 3</h2>
+    <p class="ew-why">${VIOL[w.type]?.[1] || 'Ин амал дар имтиҳон манъ аст.'}</p>
+    <div class="ew-dots" aria-hidden="true">${[1, 2, 3].map(i => html`<span class=${i <= w.count ? 'on' : ''}></span>`)}</div>
+    <p class="ew-left">${left === 1 ? 'Боз 1 вайронкунӣ — ва шумо блок мешавед!' : `Боз ${left} вайронкунӣ — ва шумо блок мешавед.`}</p>
+    <button class="btn p lg" onClick=${onClose} autofocus>Фаҳмидам, идома медиҳам</button>
+  </div></div>`;
+}
+
+const Blocked = () => html`<div class="page"><div class="blocked" role="alert"><div class="blocked-ico">⛔</div><h1>Шумо аз имтиҳон блок шудед</h1>
+  <p>3 вайронкунӣ шуд. Танҳо устод метавонад блокро бардорад — ба устод муроҷиат кунед.</p><a class="btn lg" href="#/course">← Ба нақшаи курс</a></div></div>`;
+
+/** Саҳифаи маҷмӯа: рӯйхати масъалаҳо дар чап, масъала ва муҳаррир дар рост */
 export function SetPage({ user, lid, kind, idx }) {
   const [{ data, loading, error }, reload] = useLoad(() => api(`/api/lessons/${lid}/sets`), [lid]);
-  const [exam, setExam] = useState(null);
+  const [warn, setWarn] = useState(null);
+  const [isFull, setIsFull] = useState(!!document.fullscreenElement);
+  const [busy, setBusy] = useState(false); const [err, setErr] = useState(null);
+  const [ask, setAsk] = useState(false);
   useEvents(ev => { if ((ev.type === 'submission' && ev.state === 'done') || (ev.type === 'lesson' && Number(ev.lesson_id) === Number(lid))) reload(true); }, [lid]);
+  useEffect(() => { const f = () => setIsFull(!!document.fullscreenElement); document.addEventListener('fullscreenchange', f); return () => document.removeEventListener('fullscreenchange', f); }, []);
   const isExam = data?.lesson?.kind === 'exam' && user.role === 'student';
-  useExamGuard(lid, isExam && !exam?.blocked, r => { setExam(r); if (r.blocked) reload(true); else toast(`⚠ Вайронкунӣ ${r.count} аз 3: нусхабардорӣ ва рафтан ба равзанаи дигар манъ аст.`); });
+  const ex = data?.exam;
+  const blocked = !!error?.data?.blocked;
+  const active = isExam && !!ex?.accepted && !ex?.finished && !blocked;
+  useExamGuard(lid, active, r => {
+    if (r.ignored) return;
+    if (r.blocked) { setWarn(null); leaveFull(); reload(true); return; }
+    setWarn(r); reload(true);
+  });
+  useEffect(() => { if (blocked || ex?.finished) leaveFull(); }, [blocked, ex?.finished]);
+
   if (loading) return html`<${Loading} />`;
-  if (error && !data) return html`<div class="page">${error.data?.blocked ? html`<div class="blocked"><div class="blocked-ico">⛔</div><h1>Шумо аз имтиҳон блок шудед</h1><p>3 вайронкунӣ (нусхабардорӣ ё рафтан ба равзанаи дигар). Танҳо устод метавонад шуморо боз кунад.</p><a class="btn" href="#/course">← Ба нақшаи курс</a></div>` : html`<${ErrorBox} error=${error} retry=${reload} />`}</div>`;
-  if (error?.data?.blocked) return html`<div class="page"><div class="blocked"><div class="blocked-ico">⛔</div><h1>Шумо аз имтиҳон блок шудед</h1><p>Танҳо устод метавонад шуморо боз кунад.</p><a class="btn" href="#/course">← Ба нақшаи курс</a></div></div>`;
+  if (blocked) return html`<${Blocked} />`;
+  if (error && !data) return html`<div class="page"><${ErrorBox} error=${error} retry=${reload} /></div>`;
+  const L = data.lesson;
+  if (user.role === 'teacher') {
+    const ps = data.sets[kind] || [];
+    return html`<div class="page"><a href=${'#/g/' + L.group_id}>← Гурӯҳ</a><h1 style="margin:8px 0">${setName(L.kind, kind, true)}: ${L.title}</h1>${ps.map((p, j) => html`<div class="row" style="padding:6px 0"><span class="chip">${j + 1}</span><a href=${'#/problem/' + p.id + '/edit'}>${p.title}</a></div>`)}</div>`;
+  }
+  const all = ['class', 'home', 'extra'].flatMap(k => data.sets[k] || []);
+  if (isExam && !ex.accepted) {
+    const accept = async () => { setBusy(true); setErr(null); goFull(); try { await api(`/api/lessons/${lid}/exam/accept`, { method: 'POST' }); reload(true); } catch (e) { setErr(e.message); leaveFull(); } finally { setBusy(false); } };
+    return html`<${ExamGate} L=${L} onAccept=${accept} busy=${busy} err=${err} />`;
+  }
+  if (isExam && ex.finished) {
+    const sv = all.filter(p => p.solved).length;
+    return html`<div class="page"><div class="examdone"><div class="eg-ico">🏁</div><h1>Шумо имтиҳонро тамом кардед</h1>
+      <p class="eg-lead">Ҳал шуд: <b>${sv}</b> аз ${all.length} масъала.</p>
+      <div class="examdone-list">${all.map(p => html`<div class=${'setitem' + (p.solved ? ' solved' : '')}><span class="n">${p.solved ? '✓' : '–'}</span><span class="t">${p.title}</span></div>`)}</div>
+      <a class="btn p lg" href="#/course">← Ба нақшаи курс</a></div></div>`;
+  }
   const ps = data.sets[kind] || [];
   if (!ps.length) return html`<div class="page"><${Empty} title="Дар ин маҷмӯа масъала нест"><a href="#/course">Ба нақшаи курс</a><//></div>`;
   const i = Math.min(Math.max(0, Number(idx) || 0), ps.length - 1);
   const sv = ps.filter(p => p.solved).length;
-  const L = data.lesson;
-  const count = exam?.count ?? data.exam?.count ?? 0;
-  if (user.role === 'teacher') return html`<div class="page"><a href=${'#/g/' + L.group_id}>← Гурӯҳ</a><h1 style="margin:8px 0">${setName(L.kind, kind, true)}: ${L.title}</h1>${ps.map((p, j) => html`<div class="row" style="padding:6px 0"><span class="chip">${j + 1}</span><a href=${'#/problem/' + p.id + '/edit'}>${p.title}</a></div>`)}</div>`;
+  const count = ex?.count ?? 0;
+  const href = (k, j) => `#/set/${lid}/${k}/${j}`;
+  const finish = async () => { setBusy(true); try { await api(`/api/lessons/${lid}/exam/finish`, { method: 'POST' }); setAsk(false); leaveFull(); reload(true); } catch (e) { toast(e.message); } finally { setBusy(false); } };
   return html`<div class=${'setlay' + (isExam ? ' examlay' : '')}>
     <aside class="setside" aria-label="Масъалаҳои маҷмӯа">
-      <a class="small" href="#/course">← Нақшаи курс</a>
-      <div class="kicker" style="margin-top:8px">${setName(L.kind, kind, true)}</div>
+      ${!isExam && html`<a class="small backlink" href="#/course">← Нақшаи курс</a>`}
+      <div class="kicker acc">${isExam ? 'Имтиҳон' : setName(L.kind, kind, true)}</div>
       <div class="small muted setlesson">${L.title}</div>
-      ${isExam && html`<div class=${'examguard' + (count ? ' warn' : '')}>🛡 Имтиҳон · вайронкунӣ <b>${count}/3</b><div class="small">Copy/paste ва рафтан ба равзанаи дигар манъ аст.</div></div>`}
-      <div class="progcard"><div class="row"><b>Пешрафт</b><div class="spacer"></div><b>${sv}/${ps.length}</b></div><div class="bar" style="margin-top:8px"><i style=${`width:${(100 * sv) / ps.length}%`}></i></div>${sv === ps.length ? html`<div class="small" style="color:var(--ok);margin-top:6px">🎉 Ҳамаи масъалаҳо ҳал шуданд!</div>` : ''}</div>
-      <div class="small muted" style="margin-top:4px">Гузашт: ${sv} / ${ps.length}</div>
-      <nav class="setlist">${ps.map((p, j) => html`<a href=${`#/set/${lid}/${kind}/${j}`} class=${'setitem' + (j === i ? ' on' : '') + (p.solved ? ' solved' : '')} aria-current=${j === i ? 'page' : undefined}>
-        <span class="n">${j + 1}</span><span class="t">${p.title}</span>${p.solved ? html`<span class="ok">✓</span>` : ''}</a>`)}</nav>
+      <div class="settabs" role="tablist">${['class', 'home', 'extra'].filter(k => (data.sets[k] || []).length).map(k => { const s2 = data.sets[k]; return html`<a role="tab" aria-selected=${k === kind} class=${'settab' + (k === kind ? ' on' : '')} href=${href(k, 0)}>${L.kind === 'exam' ? { class: 'A', home: 'B', extra: 'Мураккаб' }[k] : setName(L.kind, k)}<small>${s2.filter(p => p.solved).length}/${s2.length}</small></a>`; })}</div>
+      ${isExam && html`<div class=${'examguard' + (count ? ' warn' : '')}>🛡️ Вайронкунӣ: <b>${count} аз 3</b><div class="small">Copy, paste, рафтан ба равзанаи дигар, Esc ва «Ақиб» манъ аст.</div></div>`}
+      <div class="progcard">
+        <div class="row"><span class="pico" aria-hidden="true">🔥</span><b>Пешрафт</b><div class="spacer"></div><b class="pnum">${sv}/${ps.length}</b></div>
+        <div class="bar"><i style=${`width:${(100 * sv) / ps.length}%`}></i></div>
+        ${sv === ps.length ? html`<div class="pdone">🎉 Ҳамаи масъалаҳо ҳал шуданд!</div>` : ''}
+      </div>
+      <div class="listcard">
+        <div class="small muted">Гузашт: <b class="pnum2">${sv} / ${ps.length}</b></div>
+        <nav class="setlist">${ps.map((p, j) => html`<a href=${href(kind, j)} class=${'setitem' + (j === i ? ' on' : '') + (p.solved ? ' solved' : '')} aria-current=${j === i ? 'page' : undefined}>
+          <span class="n">${j + 1}</span><span class="t">${p.title}</span><span class=${'ok' + (p.solved ? '' : ' no')} aria-label=${p.solved ? 'ҳал шуд' : 'ҳал нашуд'}>${p.solved ? '✓' : ''}</span></a>`)}</nav>
+      </div>
+      ${isExam && html`<button class="btn finishbtn" onClick=${() => setAsk(true)}>🏁 Имтиҳонро тамом кардам</button>`}
     </aside>
-    <${Workspace} key=${ps[i].id} user=${user} pid=${ps[i].id} lessonId=${Number(lid)} exam=${isExam} />
+    <main class="setmain">
+      <${Workspace} key=${ps[i].id} user=${user} pid=${ps[i].id} lessonId=${Number(lid)} exam=${isExam} num=${i + 1}
+        nav=${{ prev: i > 0 ? href(kind, i - 1) : null, next: i < ps.length - 1 ? href(kind, i + 1) : null }} exitHref=${isExam ? null : '#/course'} />
+    </main>
+    ${active && !isFull && canFull() && !warn && html`<div class="examwarn-bg"><div class="examwarn calm"><div class="ew-ico">⛶</div><h2>Имтиҳон дар экрани пурра мегузарад</h2>
+      <p class="ew-why">Барои идома додан тугмаро пахш кунед.</p><button class="btn p lg" onClick=${goFull}>Ба экрани пурра баргард</button></div></div>`}
+    ${warn && html`<${ExamWarn} w=${warn} onClose=${() => { setWarn(null); goFull(); }} />`}
+    ${ask && html`<${Modal} title="Имтиҳонро тамом мекунед?" onClose=${() => setAsk(false)}>
+      <p>Ҳал шуд: <b>${all.filter(p => p.solved).length}</b> аз ${all.length} масъала.</p>
+      <p>Баъд аз тамом кардан шумо ба ин имтиҳон <b>баргашта наметавонед</b> (танҳо устод метавонад боз кушояд).</p>
+      <div class="row"><button class="btn p" disabled=${busy} onClick=${finish}>Ҳа, тамом кардам</button><button class="btn" onClick=${() => setAsk(false)}>Не, идома медиҳам</button></div>
+    <//>`}
   </div>`;
 }

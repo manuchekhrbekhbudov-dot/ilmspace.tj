@@ -8,17 +8,41 @@ export { h, render, useState, useEffect, useRef, useCallback };
 export class ApiError extends Error {
   constructor(status, data) { super(data?.error || `Хато ${status}`); this.status = status; this.data = data; }
 }
+// ───── Версияи барнома ─────
+// Сервер ба index.html <meta name="build"> мегузорад ва ба ҳар ҷавоби API сарлавҳаи X-Build.
+// Агар сервер нав шуда бошад, саҳифа худаш аз нав бор мешавад (коди навишташуда дар дастгоҳ нигоҳ дошта шудааст).
+export const BUILD = (typeof document !== 'undefined' && document.querySelector('meta[name=build]')?.content) || '';
+export function newVersion(b) {
+  if (!BUILD || BUILD === 'dev' || !b || b === 'dev' || b === BUILD || window.__codelabReloading) return;
+  window.__codelabReloading = true; // посбони имтиҳон инро вайронкунӣ ҳисоб намекунад
+  setTimeout(() => location.reload(), 400);
+}
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 export async function api(path, opts = {}) {
   const { method = 'GET', body } = opts;
-  let res;
-  try {
-    res = await fetch(path, { method, credentials: 'same-origin', headers: body !== undefined ? { 'Content-Type': 'application/json' } : {}, body: body !== undefined ? JSON.stringify(body) : undefined });
-  } catch (e) {
-    throw new ApiError(0, { error: 'Пайваст бо сервер нест. Интернетро тафтиш кунед.', offline: true });
+  const get = method === 'GET';
+  // GET: агар сервер 20 сония ҷавоб надиҳад ё дар ҳоли навсозӣ бошад (502/503/504), то 2 бор такрор мекунем
+  const limit = opts.timeout ?? (get ? 20000 : 0);
+  for (let attempt = 0; ; attempt++) {
+    const ctl = new AbortController();
+    const timer = limit ? setTimeout(() => ctl.abort(), limit) : null;
+    let res;
+    try {
+      res = await fetch(path, { method, credentials: 'same-origin', signal: ctl.signal, headers: body !== undefined ? { 'Content-Type': 'application/json' } : {}, body: body !== undefined ? JSON.stringify(body) : undefined });
+    } catch (e) {
+      clearTimeout(timer);
+      if (get && attempt < 2 && navigator.onLine !== false) { await sleep(1500 * (attempt + 1)); continue; }
+      throw new ApiError(0, ctl.signal.aborted
+        ? { error: 'Сервер ҷавоб намедиҳад. Як дақиқа сабр карда, «Дубора кӯшиш кун»-ро пахш кунед.', offline: true, timeout: true }
+        : { error: 'Пайваст бо сервер нест. Интернетро тафтиш кунед.', offline: true });
+    }
+    clearTimeout(timer);
+    newVersion(res.headers.get('x-build'));
+    if (get && attempt < 2 && [502, 503, 504].includes(res.status)) { await sleep(2000 * (attempt + 1)); continue; }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(res.status, data);
+    return data;
   }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(res.status, data);
-  return data;
 }
 
 // ───── Рӯйдодҳо (SSE) ─────
@@ -27,7 +51,7 @@ let es = null;
 export function connectEvents() {
   if (es) es.close();
   es = new EventSource('/api/events');
-  es.onmessage = m => { let d; try { d = JSON.parse(m.data); } catch { return; } listeners.forEach(f => f(d)); };
+  es.onmessage = m => { let d; try { d = JSON.parse(m.data); } catch { return; } if (d.type === 'hello') newVersion(d.build); listeners.forEach(f => f(d)); };
 }
 export function disconnectEvents() { if (es) es.close(); es = null; }
 export function useEvents(fn, deps = []) {
@@ -86,11 +110,12 @@ export function deviceId() {
 }
 
 let toastTimer;
-export function toast(msg) {
+export function toast(msg, opts = {}) {
   let el = document.getElementById('toast');
-  if (!el) { el = document.createElement('div'); el.id = 'toast'; el.className = 'toast'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
+  if (!el) { el = document.createElement('div'); el.id = 'toast'; el.setAttribute('role', 'status'); document.body.appendChild(el); el.onclick = () => { el.style.display = 'none'; }; }
+  el.className = 'toast' + (opts.big ? ' big' : '');
   el.textContent = msg; el.style.display = 'block';
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3200);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.style.display = 'none'; }, opts.big ? 10000 : 3600);
 }
 
 // Фарқи сатрҳо (LCS) барои муқоисаи ду кӯшиш
@@ -113,7 +138,12 @@ export function lineDiff(a, b) {
 
 // ───── Компонентҳои умумӣ ─────
 export function Loading({ text = 'Бор мешавад…' }) {
-  return html`<div class="loading"><span class="spin"></span> ${text}</div>`;
+  // Агар дер шавад (сервер хоб буд ё нав мешавад), фаҳмонем ва тугмаи «аз нав бор кун» нишон диҳем
+  const [slow, setSlow] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setSlow(true), 8000); return () => clearTimeout(t); }, []);
+  return html`<div class="loading"><span class="spin"></span> ${text}
+    ${slow && html`<div class="slowload">Сервер дер ҷавоб медиҳад. Агар сайт муддате кушода набуд, сервер то 1 дақиқа «бедор» мешавад.
+      <div><button class="btn sm" onClick=${() => location.reload()}>Саҳифаро аз нав бор кун</button></div></div>`}</div>`;
 }
 export function Empty({ title, children }) {
   return html`<div class="empty"><h3>${title}</h3><div>${children}</div></div>`;
