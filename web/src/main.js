@@ -34,7 +34,7 @@ function Header({ user, hash, onLogout, judge, storage }) {
     <div class="spacer"></div>
     ${!online && html`<span class="net" role="status"><span class="long">Интернет нест — код дар дастгоҳ нигоҳ дошта мешавад</span><span class="short">Офлайн</span></span>`}
     ${user.role === 'teacher' && judge && !judge.ok && html`<span class="net" title=${judge.reason}>Санҷанда танзим нашудааст</span>`}
-    ${user.role === 'teacher' && storage?.ephemeral && html`<span class="net" title="Дар Render DATABASE_URL-ро гузоред (README)">Маълумот муваққатӣ аст</span>`}
+    ${user.role === 'teacher' && storage?.ephemeral && html`<span class="net" title=${storage.lastError || 'Дар Render DATABASE_URL-ро гузоред (README)'}>${storage.mode === 'invalid' ? 'DATABASE_URL нодуруст — маълумот муваққатӣ' : 'Маълумот муваққатӣ аст'}</span>`}
     ${user.role === 'teacher' && storage?.mode === 'postgres' && storage.lastError && html`<span class="net" title=${storage.lastError}>Нусха ба база нарафт</span>`}
     ${user.role === 'teacher' && judge?.ok && judge.warning && html`<span class="net" title=${judge.warning}>Санҷандаи маҳаллӣ бе ҷудокунӣ</span>`}
     <button class="btn ghost icon-btn" onClick=${toggleTheme} title="Мавзӯи торик/равшан" aria-label="Мавзӯи торик/равшан">◐</button>

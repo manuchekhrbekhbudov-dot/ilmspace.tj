@@ -23,7 +23,14 @@ async function connect() {
 
 /** Пеш аз кушодани SQLite: агар дар Postgres нусха бошад, онро ба DB_FILE менависад. */
 export async function restore(dbFile) {
-  if (!process.env.DATABASE_URL) return false;
+  const url = process.env.DATABASE_URL || '';
+  if (!url) return false;
+  if (!/^postgres(ql)?:\/\//i.test(url)) {
+    state.mode = 'invalid';
+    state.lastError = 'DATABASE_URL бояд бо postgresql:// оғоз шавад (силкаи Neon), на силкаи сайт.';
+    console.error('ДИҚҚАТ: ' + state.lastError + ' Маълумот танҳо муваққатӣ нигоҳ дошта мешавад.');
+    return false;
+  }
   try {
     client = await connect();
     state.mode = 'postgres';
@@ -38,8 +45,9 @@ export async function restore(dbFile) {
     return true;
   } catch (e) {
     state.lastError = e.message;
-    console.error('Postgres: барқарор нашуд —', e.message);
-    throw new Error('DATABASE_URL танзим шудааст, вале пайваст нашуд: ' + e.message);
+    console.error('Postgres: пайваст нашуд —', e.message, '— сайт бе нусхаи доимӣ кор мекунад.');
+    state.mode = 'invalid'; client = null;  // нусхаи кӯҳна дар Postgres дахл намешавад
+    return false;
   }
 }
 

@@ -337,7 +337,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     return { cookie: t, user: { id: u.id, login: u.login, name: u.name, role: u.role } };
   });
   R('POST', '/api/logout', ({ sid }) => { Q.run('DELETE FROM sessions WHERE token=?', sid || ''); return { cookie: '' }; });
-  const storage = () => { const p = persistStatus(); return { ...p, ephemeral: p.mode !== 'postgres' && !!process.env.RENDER && !String(process.env.DB_FILE || '').startsWith('/data') }; };
+  const storage = () => { const p = persistStatus(); return { ...p, ephemeral: p.mode !== 'postgres' && (!!process.env.RENDER || p.mode === 'invalid') && !String(process.env.DB_FILE || '').startsWith('/data') }; };
   R('GET', '/api/me', ({ user }) => ({ user: user || null, judge: judgeStatus(), storage: user?.role === 'teacher' ? storage() : undefined }));
   R('GET', '/api/health', () => ({ ok: true, storage: storage(), judge: judgeStatus().ok }));
   // Профил: ном, логин ва паролро худи корбар иваз мекунад (пароли ҷорӣ лозим аст)
