@@ -11,9 +11,28 @@ import zlib from 'node:zlib';
 
 const INTERVAL = Number(process.env.SNAPSHOT_SECONDS || 10) * 1000;
 let client = null;
-const state = { mode: 'local', lastSaved: null, lastError: null, bytes: 0 };
+let ctx = null;            // { db, dbFile } — пас аз startSync
+let retryPending = false;  // пайвасти аввал нашуд — дар пасманзар боз кӯшиш мекунем
+const state = { mode: 'local', lastSaved: null, lastError: null, bytes: 0, retrying: false };
 
-export function persistStatus() { return { ...state }; }
+export function persistStatus() { return { ...state, connection: connectionInfo() }; }
+
+/** Маълумоти ташхис бе сирр: парол аз куҷо гирифта мешавад ва кадом пайваст аст. */
+export function connectionInfo(env = process.env) {
+  const raw = String(env.DATABASE_URL || '').trim().replace(/^["'«]+|["'»]+$/g, '').trim();
+  if (!raw) return null;
+  try {
+    const u = new URL(raw.replace(/^postgres(ql)?:/i, 'http:').replace(/\[YOUR[-_ ]PASSWORD\]/gi, 'PLACEHOLDER'));
+    const placeholder = /\[YOUR[-_ ]PASSWORD\]/i.test(raw);
+    return {
+      passwordFrom: placeholder ? 'DATABASE_PASSWORD' : (u.password ? 'DATABASE_URL (пароли дохили силка)' : 'нест'),
+      databasePasswordSet: !!String(env.DATABASE_PASSWORD || '').trim(),
+      ignoredDatabasePassword: !placeholder && !!u.password && !!String(env.DATABASE_PASSWORD || '').trim(),
+      pooler: /pooler\.supabase\.com$/i.test(u.hostname) ? (u.port === '6543' ? 'transaction' : 'session') : (/supabase\.co$/i.test(u.hostname) ? 'direct' : 'other'),
+      port: u.port || '5432',
+    };
+  } catch { return { parse: 'error' }; }
+}
 
 /** Силкаи пайвастро аз танзимот месозад. Хатои маъмулиро бо забони фаҳмо мегӯяд. */
 export function databaseUrl(env = process.env) {
@@ -74,6 +93,7 @@ export async function restore(dbFile) {
     state.mode = 'invalid';
     try { await client?.end(); } catch {}
     client = null;  // нусхаи кӯҳна дар Postgres дахл намешавад
+    retryPending = true;
     return false;
   }
 }
@@ -90,7 +110,42 @@ function friendly(e) {
 
 /** Ҳар INTERVAL сония, агар тағйирот бошад, нусхаро ба Postgres мефиристад. */
 export function startSync(db, dbFile) {
-  if (!client) return;
+  ctx = { db, dbFile };
+  if (client) return beginSync();
+  if (retryPending) retryLoop();
+}
+
+// Ҳар дақиқа боз кӯшиш (масалан, пароли нав ҳанӯз дар Supabase паҳн нашудааст).
+// Агар дар база аллакай нусха бошад, онро ҳеҷ гоҳ бо маълумоти муваққатӣ иваз намекунем.
+function retryLoop() {
+  state.retrying = true;
+  const t = setInterval(async () => {
+    let c;
+    try {
+      const { error } = databaseUrl(); if (error) { state.lastError = error; return; }
+      c = await connect();
+      let has = (await c.query('SELECT 1 FROM codelab.snapshot WHERE id=1')).rows.length > 0;
+      if (!has) { try { has = (await c.query('SELECT 1 FROM public.codelab_snapshot WHERE id=1')).rows.length > 0; } catch {} }
+      clearInterval(t); state.retrying = false;
+      if (has) {
+        await c.end();
+        state.lastError = 'База пайваст шуд, вале маълумоти он ҳанӯз бор нашудааст. Дар Render «Manual Deploy → Restart service»-ро пахш кунед.';
+        console.error('Postgres: ' + state.lastError);
+        return;
+      }
+      client = c; state.mode = 'postgres'; state.lastError = null;
+      console.log('Postgres: пас аз кӯшиши такрорӣ пайваст шуд — нигоҳдорӣ оғоз шуд.');
+      beginSync();
+    } catch (e) {
+      state.lastError = friendly(e);
+      try { await c?.end(); } catch {}
+    }
+  }, Number(process.env.RETRY_SECONDS || 60) * 1000);
+  t.unref();
+}
+
+function beginSync() {
+  const { db, dbFile } = ctx;
   let lastChanges = -1;
   const tmp = dbFile + '.snapshot';
   async function doSave(force) {
