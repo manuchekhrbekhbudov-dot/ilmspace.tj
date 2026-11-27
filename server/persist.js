@@ -22,7 +22,10 @@ const clean = v => String(v ?? '').trim().replace(/^["'«]+|["'»]+$/g, '').trim
 function vars(env) {
   let url = clean(env.DATABASE_URL), pw = clean(env.DATABASE_PASSWORD);
   const isUrl = v => /^postgres(ql)?:\/\//i.test(v);
-  if (isUrl(pw) && !isUrl(url)) [url, pw] = [pw, isUrl(url) ? '' : url];
+  if (isUrl(pw)) {
+    if (!isUrl(url)) [url, pw] = [pw, url];   // ҷойивазкарда
+    else { url = pw; pw = ''; }               // ҳарду силка: силкаи DATABASE_PASSWORD (навтар) бо пароли дохилаш
+  }
   return { url, pw };
 }
 const PLACEHOLDER = /\[YOUR[-_ ](?:DATABASE[-_ ])?PASSWORD\]/i;
