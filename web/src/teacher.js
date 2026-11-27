@@ -142,12 +142,17 @@ function LessonsTab({ g, templates, reload }) {
 }
 
 function StudentsTab({ g, reload }) {
-  const [login, setLogin] = useState(''); const [err, setErr] = useState(null);
+  const [login, setLogin] = useState(''); const [err, setErr] = useState(null); const [pw, setPw] = useState(null);
+  const resetPw = async m => { if (!confirm(`Барои ${m.name} пароли нав созем? Пароли кӯҳна дигар кор намекунад.`)) return; try { const r = await api(`/api/groups/${g.group.id}/members/${m.id}/password`, { method: 'POST' }); setPw({ ...r, name: m.name }); } catch (e) { setErr(e.message); } };
   const act = async (fn, msg) => { setErr(null); try { await fn(); msg && toast(msg); reload(true); } catch (e) { setErr(e.message); } };
   const pending = g.members.filter(m => m.status === 'pending'), active = g.members.filter(m => m.status === 'active');
   return html`<div class="grid2">
     <div class="card"><h3>Шогирдони гурӯҳ</h3>
-      ${!active.length ? html`<div class="muted">Ҳанӯз шогирд нест.</div>` : html`<table class="t"><tbody>${active.map(m => html`<tr><td><b>${m.name}</b> <span class="muted mono small">${m.login}</span></td><td style="text-align:right"><button class="btn sm danger" onClick=${() => confirm(`${m.name}-ро аз гурӯҳ хориҷ кунем?`) && act(() => api(`/api/groups/${g.group.id}/members/${m.id}`, { method: 'DELETE' }))}>Хориҷ кун</button></td></tr>`)}</tbody></table>`}
+      ${!active.length ? html`<div class="muted">Ҳанӯз шогирд нест.</div>` : html`<table class="t"><tbody>${active.map(m => html`<tr><td><b>${m.name}</b> <span class="muted mono small">${m.login}</span></td><td style="text-align:right;white-space:nowrap"><a class="btn sm" href=${`#/g/${g.group.id}/s/${m.id}`}>Пешрафт</a> <button class="btn sm" onClick=${() => resetPw(m)}>Пароли нав</button> <button class="btn sm danger" onClick=${() => confirm(`${m.name}-ро аз гурӯҳ хориҷ кунем?`) && act(() => api(`/api/groups/${g.group.id}/members/${m.id}`, { method: 'DELETE' }))}>Хориҷ кун</button></td></tr>`)}</tbody></table>`}
+      ${pw && html`<div class="notice ok" style="margin-top:10px" role="status">Пароли нав барои <b>${pw.name}</b>: логин <b class="mono">${pw.login}</b>, парол <b class="mono" style="font-size:18px">${pw.password}</b><div class="small">Ба шогирд гӯед. Ӯ баъд дар «👤 Ҳисоби ман» пароли худро гузошта метавонад.</div></div>`}
+      <div class="sep"></div>
+      <div class="row"><a class="btn" href=${`/api/groups/${g.group.id}/export.csv`} download>⬇ Натиҷаҳо ба Excel</a><div class="spacer"></div>
+        <button class="btn sm danger" onClick=${async () => { if (prompt(`Барои нест кардан номи гурӯҳро нависед: ${g.group.name}`) !== g.group.name) return; try { await api('/api/groups/' + g.group.id, { method: 'DELETE' }); toast('Гурӯҳ нест карда шуд.'); location.hash = '#/'; } catch (e) { toast(e.message); } }}>Гурӯҳро нест кун</button></div>
     </div>
     <div class="col">
       ${pending.length > 0 && html`<div class="card hl"><h3>Дархостҳои нав</h3>${pending.map(m => html`<div class="row" style="padding:6px 0"><b>${m.name}</b><span class="mono small muted">${m.login}</span><div class="spacer"></div>
@@ -254,5 +259,33 @@ export function Report({ id }) {
     </div>
     ${drill && html`<${AttemptsModal} title=${drill.title} ids=${drill.ids} onClose=${() => setDrill(null)} />`}
     ${hw && html`<${Modal} title="Вазифаи хонагӣ барои гурӯҳ" onClose=${() => setHw(false)} wide><${AssignmentForm} g=${{ id: r.lesson.group_id }} problems=${problems} preset=${hwPreset} lessonId=${r.lesson.id} onDone=${() => setHw(false)} /><//>`}
+  </div>`;
+}
+
+export function StudentProgress({ gid, uid }) {
+  const [{ data, loading, error }, reload] = useLoad(() => api(`/api/groups/${gid}/students/${uid}`), [gid, uid]);
+  const [open, setOpen] = useState(null);
+  useEvents(ev => { if (ev.type === 'activity' && Number(ev.user_id) === Number(uid)) reload(true); }, [uid]);
+  if (loading) return html`<${Loading} />`;
+  if (error) return html`<div class="page"><${ErrorBox} error=${error} retry=${reload} /></div>`;
+  const { student, problems, help, assignments } = data;
+  const solved = problems.filter(p => p.solved).length;
+  return html`<div class="page">
+    <a href=${`#/g/${gid}?tab=students`} class="small">← Шогирдон</a>
+    <div class="row" style="margin:6px 0 14px"><h1>${student.name}</h1><span class="chip mono">${student.login}</span><span class="chip acc">${solved} аз ${problems.length} ҳал шуд</span></div>
+    <div class="grid2">
+      <div class="card" style="overflow:auto"><h3>Масъалаҳо</h3>
+        ${TOPIC_KEYS.map(t => { const ps = problems.filter(p => p.topic === t); if (!ps.length) return null; return html`<div class="kicker" style="margin-top:12px">${TOPIC[t]} · ${ps.filter(p => p.solved).length}/${ps.length}</div>
+          <table class="t" style="table-layout:fixed"><tbody>${ps.map(p => html`<tr class=${p.last_id ? 'click' : ''} onClick=${() => p.last_id && setOpen({ id: p.last_id })}>
+            <td style="width:42%">${p.title}</td>
+            <td style="width:33%">${p.solved ? html`<span class="v v-ok">✓ Ҳал шуд</span>` : p.last ? html`<${Verdict} v=${p.last.verdict} extra=${['CE'].includes(p.last.verdict) ? '' : `${p.last.passed}/${p.last.total}`} />` : html`<span class="v v-none">Оғоз нашуд</span>`}</td>
+            <td class="muted small">${p.attempts ? `${p.attempts} кӯшиш` : ''}${p.solved_at ? ` · ${fDateTime(p.solved_at)}` : ''}</td></tr>`)}</tbody></table>`; })}
+      </div>
+      <div class="col">
+        <div class="card"><h3>Вазифаҳои хонагӣ</h3>${!assignments.length ? html`<div class="muted small">Вазифа нест.</div>` : assignments.map(a => html`<div style="margin-bottom:10px"><b>${a.title}</b> <span class="muted small">то ${fDateTime(a.due_at)}</span>${a.problems.map(p => html`<div class="row" style="padding:2px 0"><span class="small">${p.title}</span><div class="spacer"></div><${AsgState} s=${p.state} /></div>`)}</div>`)}</div>
+        <div class="card"><h3>Дархостҳои ёрӣ</h3>${!help.length ? html`<div class="muted small">Дархост набуд.</div>` : help.map(h => html`<div class="small" style="padding:3px 0">${fDateTime(h.created_at)} · «${h.question}» <span class="muted">(${h.status === 'done' ? 'анҷом ёфт' : h.status === 'taken' ? 'гирифта шуд' : 'интизор'})</span></div>`)}</div>
+      </div>
+    </div>
+    ${open && html`<${AttemptsModal} title=${'Кӯшиши охирин'} ids=${[open.id]} onClose=${() => setOpen(null)} />`}
   </div>`;
 }

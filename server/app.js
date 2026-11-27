@@ -426,6 +426,61 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     publish([uid], { type: 'membership', group_id: gid });
     return { ok: true };
   });
+  // Пароли муваққатӣ барои шогирде, ки паролашро фаромӯш кард
+  R('POST', '/api/groups/:id/members/:uid/password', ({ user, params }) => {
+    need(user, 'teacher'); const gid = Number(params.id), uid = Number(params.uid);
+    if (!ownsGroup(user, gid) || !Q.get('SELECT 1 FROM group_members WHERE group_id=? AND user_id=?', gid, uid)) throw forbidden();
+    const A = 'abcdefghkmnpqrstuvwxyz23456789'; let pw = ''; for (let i = 0; i < 8; i++) pw += A[Math.floor(Math.random() * A.length)];
+    Q.run('UPDATE users SET pass_hash=? WHERE id=?', hashPassword(pw), uid);
+    Q.run('DELETE FROM sessions WHERE user_id=?', uid);
+    return { password: pw, login: Q.get('SELECT login FROM users WHERE id=?', uid).login };
+  });
+  // Пешрафти пурраи як шогирд
+  R('GET', '/api/groups/:id/students/:uid', ({ user, params }) => {
+    need(user, 'teacher'); const gid = Number(params.id), uid = Number(params.uid);
+    if (!ownsGroup(user, gid) || !isMember(uid, gid)) throw forbidden();
+    const st = Q.get('SELECT id, name, login, created_at FROM users WHERE id=?', uid);
+    const rows = Q.all(`SELECT s.problem_id pid, COUNT(*) n, SUM(g.verdict='AC') ac, MIN(CASE WHEN g.verdict='AC' THEN s.created_at END) solved_at, MAX(s.id) last_id
+      FROM submissions s JOIN gradings g ON g.submission_id=s.id WHERE s.user_id=? AND g.verdict!='SE' GROUP BY s.problem_id`, uid);
+    const by = new Map(rows.map(r => [r.pid, r]));
+    const problems = Q.all('SELECT id, topic FROM problems WHERE current_version>0 ORDER BY position, id').map(p => {
+      const r = by.get(p.id); const last = r ? Q.get('SELECT verdict, passed, total, failed_tags FROM gradings WHERE submission_id=?', r.last_id) : null;
+      return { id: p.id, topic: p.topic, title: publicProblem(p.id).title, attempts: r?.n || 0, solved: !!r?.ac, solved_at: r?.solved_at || null, last_id: r?.last_id || null, last: last ? { ...last, failed_tags: J(last.failed_tags) } : null };
+    }).filter(p => p.attempts > 0 || !J(Q.get('SELECT data FROM problem_versions WHERE problem_id=? AND version=(SELECT current_version FROM problems WHERE id=?)', p.id, p.id).data).lessonOnly);
+    const help = Q.all('SELECT question, status, created_at FROM help_requests WHERE user_id=? AND group_id=? ORDER BY id DESC LIMIT 20', uid, gid);
+    const asg = Q.all('SELECT * FROM assignments WHERE group_id=? ORDER BY due_at', gid).map(a => ({ id: a.id, title: a.title, due_at: a.due_at, problems: assignmentStatus(a, uid) }));
+    return { student: st, problems, help, assignments: asg };
+  });
+  // Натиҷаҳои гурӯҳ барои Excel (CSV)
+  R('GET', '/api/groups/:id/export.csv', ({ user, params, res }) => {
+    need(user, 'teacher'); const gid = Number(params.id); if (!ownsGroup(user, gid)) throw forbidden();
+    const g = Q.get('SELECT name FROM groups WHERE id=?', gid);
+    const ps = Q.all('SELECT id, topic FROM problems WHERE current_version>0 ORDER BY position, id').filter(p => !J(Q.get('SELECT data FROM problem_versions WHERE problem_id=? AND version=?', p.id, Q.get('SELECT current_version v FROM problems WHERE id=?', p.id).v).data).lessonOnly);
+    const esc = v => { const t = String(v ?? ''); return /[",;\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+    const head = ['Шогирд', 'Логин', 'Ҳал шуд (ҳамагӣ)', ...TOPICS.map(t => t.title), 'Кӯшишҳо', ...ps.map(p => publicProblem(p.id).title)];
+    const lines = [head.map(esc).join(';')];
+    for (const m of members(gid)) {
+      const solved = solvedSet(m.id);
+      const att = Q.get("SELECT COUNT(*) c FROM submissions s JOIN gradings g ON g.submission_id=s.id WHERE s.user_id=? AND g.verdict!='SE'", m.id).c;
+      lines.push([m.name, m.login, ps.filter(p => solved.has(p.id)).length, ...TOPICS.map(t => `${ps.filter(p => p.topic === t.key && solved.has(p.id)).length}/${ps.filter(p => p.topic === t.key).length}`), att,
+        ...ps.map(p => solved.has(p.id) ? 'ҳал шуд' : (Q.get('SELECT 1 FROM submissions WHERE user_id=? AND problem_id=?', m.id, p.id) ? 'кӯшиш' : ''))].map(esc).join(';'));
+    }
+    const name = encodeURIComponent(`${g.name} — натиҷаҳо ${dushanbeDate()}.csv`);
+    res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename*=UTF-8''${name}` });
+    res.end('﻿' + lines.join('\r\n'));
+  }, { raw: true });
+  // Нест кардани гурӯҳ
+  R('DELETE', '/api/groups/:id', ({ user, params }) => {
+    need(user, 'teacher'); const gid = Number(params.id); if (!ownsGroup(user, gid)) throw forbidden();
+    const aud = groupAudience(gid);
+    Q.tx(() => {
+      Q.run('DELETE FROM help_requests WHERE group_id=?', gid);
+      Q.run('UPDATE submissions SET lesson_id=NULL WHERE lesson_id IN (SELECT id FROM lessons WHERE group_id=?)', gid);
+      Q.run('UPDATE submissions SET assignment_id=NULL WHERE assignment_id IN (SELECT id FROM assignments WHERE group_id=?)', gid);
+      Q.run('DELETE FROM groups WHERE id=?', gid);
+    });
+    publish(aud, { type: 'membership', group_id: gid }); return { ok: true };
+  });
   R('DELETE', '/api/groups/:id/members/:uid', ({ user, params }) => {
     need(user, 'teacher'); const gid = Number(params.id); if (!ownsGroup(user, gid)) throw forbidden();
     Q.run('DELETE FROM group_members WHERE group_id=? AND user_id=?', gid, Number(params.uid)); publish([Number(params.uid)], { type: 'membership', group_id: gid }); return { ok: true };
@@ -813,7 +868,8 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     if (params.action === 'take') Q.run("UPDATE help_requests SET status='taken', taken_by=? WHERE id=?", user.id, h.id);
     else if (params.action === 'done') Q.run("UPDATE help_requests SET status='done', done_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id=?", h.id);
     else throw bad('Амали номаълум.');
-    publish(groupAudience(h.group_id).slice(0, 1).concat([h.user_id]), { type: 'help', group_id: h.group_id });
+    publish(groupAudience(h.group_id).slice(0, 1), { type: 'help', group_id: h.group_id });
+    publish([h.user_id], { type: 'help', group_id: h.group_id, action: params.action });
     return { ok: true };
   });
 

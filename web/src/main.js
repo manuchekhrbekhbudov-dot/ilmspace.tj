@@ -1,7 +1,7 @@
-import { html, render, useState, useEffect, api, connectEvents, disconnectEvents, Loading, store } from './lib.js';
+import { html, render, useState, useEffect, api, connectEvents, disconnectEvents, Loading, store, useEvents, toast } from './lib.js';
 import { Workspace } from './workspace.js';
 import { StudentHome, ProblemsList, StudentLesson } from './student.js';
-import { TeacherHome, GroupPage, Report } from './teacher.js';
+import { TeacherHome, GroupPage, Report, StudentProgress } from './teacher.js';
 import { LiveLesson, ProjectorScreen } from './live.js';
 import { ProblemEditor, TemplateEditor } from './authoring.js';
 import { CourseMap, SetPage } from './course.js';
@@ -112,6 +112,13 @@ function App() {
   const load = () => api('/api/me').then(r => { setMe(r.user); setJudge(r.judge); setStorage(r.storage); }).catch(() => setMe(store.get('me') || null));
   useEffect(() => { load(); }, []);
   useEffect(() => { if (me) { store.set('me', me); connectEvents(); } else disconnectEvents(); }, [me?.id]);
+  useEvents(ev => {
+    if (me?.role !== 'student') return;
+    if (ev.type === 'comment') toast('💬 Устод ба коди шумо шарҳ гузошт. Масъаларо кушоед → «Кӯшишҳо».');
+    if (ev.type === 'help' && ev.action === 'take') toast('✋ Устод дархости шуморо гирифт — ҳозир ёрӣ медиҳад.');
+    if (ev.type === 'help' && ev.action === 'done') toast('✓ Устод дархости ёрии шуморо анҷомёфта қайд кард.');
+    if (ev.type === 'assignment') toast('📌 Вазифаи нави хонагӣ илова шуд.');
+  }, [me?.role]);
   if (me === undefined) return html`<${Loading} />`;
   if (!me) return html`<${Auth} onAuth=${u => { setMe(u); location.hash = '#/'; load(); }} />`;
   const logout = async () => { try { await api('/api/logout', { method: 'POST' }); } catch {} store.del('me'); setMe(null); };
@@ -129,6 +136,7 @@ function App() {
   else if (seg[0] === 'problems') page = html`<${ProblemsList} user=${me} />`;
   else if (seg[0] === 'p' && !T) page = html`<${Workspace} key=${seg[1] + (q.lesson || '')} user=${me} pid=${Number(seg[1])} lessonId=${q.lesson ? Number(q.lesson) : null} />`;
   else if (seg[0] === 'lesson' && !T) page = html`<${StudentLesson} id=${seg[1]} />`;
+  else if (seg[0] === 'g' && T && seg[2] === 's') page = html`<${StudentProgress} key=${seg[3]} gid=${seg[1]} uid=${seg[3]} />`;
   else if (seg[0] === 'g' && T) page = html`<${GroupPage} key=${seg[1]} id=${seg[1]} tab=${q.tab} />`;
   else if (seg[0] === 'live' && T) page = html`<${LiveLesson} key=${seg[1]} id=${seg[1]} />`;
   else if (seg[0] === 'report' && T) page = html`<${Report} key=${seg[1]} id=${seg[1]} />`;
