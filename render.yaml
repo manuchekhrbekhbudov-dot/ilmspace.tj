@@ -11,6 +11,8 @@ services:
         value: local
       - key: DB_FILE
         value: /data/codelab.db
+      - key: DATABASE_URL     # силкаи Postgres (масалан, Neon) — дар Render дастӣ ворид мешавад
+        sync: false
       - key: COURSE_START
         value: "2026-11-28"
     disk:

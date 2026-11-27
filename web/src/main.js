@@ -22,7 +22,7 @@ function toggleTheme() {
   document.documentElement.dataset.theme = next; store.set('theme', next); try { localStorage.setItem('theme', next); } catch {}
 }
 
-function Header({ user, hash, onLogout, judge }) {
+function Header({ user, hash, onLogout, judge, storage }) {
   const online = useOnline();
   const nav = user.role === 'teacher'
     ? [['#/', 'Гурӯҳҳо'], ['#/problems', 'Масъалаҳо']]
@@ -34,6 +34,8 @@ function Header({ user, hash, onLogout, judge }) {
     <div class="spacer"></div>
     ${!online && html`<span class="net" role="status"><span class="long">Интернет нест — код дар дастгоҳ нигоҳ дошта мешавад</span><span class="short">Офлайн</span></span>`}
     ${user.role === 'teacher' && judge && !judge.ok && html`<span class="net" title=${judge.reason}>Санҷанда танзим нашудааст</span>`}
+    ${user.role === 'teacher' && storage?.ephemeral && html`<span class="net" title="Дар Render DATABASE_URL-ро гузоред (README)">Маълумот муваққатӣ аст</span>`}
+    ${user.role === 'teacher' && storage?.mode === 'postgres' && storage.lastError && html`<span class="net" title=${storage.lastError}>Нусха ба база нарафт</span>`}
     ${user.role === 'teacher' && judge?.ok && judge.warning && html`<span class="net" title=${judge.warning}>Санҷандаи маҳаллӣ бе ҷудокунӣ</span>`}
     <button class="btn ghost icon-btn" onClick=${toggleTheme} title="Мавзӯи торик/равшан" aria-label="Мавзӯи торик/равшан">◐</button>
     <a class="btn ghost sm" href="#/profile" title="Ном, логин ва парол">👤 <span class="uname">${user.name}${user.role === 'teacher' ? ' · устод' : ''}</span></a>
@@ -105,8 +107,9 @@ function Profile({ me, onSaved }) {
 function App() {
   const [me, setMe] = useState(undefined);
   const [judge, setJudge] = useState(null);
+  const [storage, setStorage] = useState(null);
   const hash = useHash();
-  const load = () => api('/api/me').then(r => { setMe(r.user); setJudge(r.judge); }).catch(() => setMe(store.get('me') || null));
+  const load = () => api('/api/me').then(r => { setMe(r.user); setJudge(r.judge); setStorage(r.storage); }).catch(() => setMe(store.get('me') || null));
   useEffect(() => { load(); }, []);
   useEffect(() => { if (me) { store.set('me', me); connectEvents(); } else disconnectEvents(); }, [me?.id]);
   if (me === undefined) return html`<${Loading} />`;
@@ -132,7 +135,7 @@ function App() {
   else if (seg[0] === 'problem' && T) page = html`<${ProblemEditor} key=${seg[1]} id=${seg[1]} />`;
   else if (seg[0] === 'template' && T) page = html`<${TemplateEditor} key=${seg[1]} id=${seg[1]} />`;
   else page = html`<div class="page"><div class="empty"><h3>Саҳифа ёфт нашуд</h3><a href="#/">Ба саҳифаи асосӣ</a></div></div>`;
-  return html`<${Header} user=${me} hash=${hash} onLogout=${logout} judge=${judge} />${page}`;
+  return html`<${Header} user=${me} hash=${hash} onLogout=${logout} judge=${judge} storage=${storage} />${page}`;
 }
 
 render(html`<${App} />`, document.getElementById('app'));

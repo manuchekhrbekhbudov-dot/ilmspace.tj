@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { openDb, q } from './db.js';
 import { judgeAll, runOnce, judgeStatus, normalizeOutput, queueDepth } from './judge.js';
+import { persistStatus } from './persist.js';
 import { explainCompile, explainRuntime } from './explain.js';
 import { seedDemo, createGroup, applyTemplate, problemData, ensureTeacher } from './seed.js';
 import { TOPICS, DEFAULT_STARTER } from './seed/problems.js';
@@ -336,7 +337,9 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     return { cookie: t, user: { id: u.id, login: u.login, name: u.name, role: u.role } };
   });
   R('POST', '/api/logout', ({ sid }) => { Q.run('DELETE FROM sessions WHERE token=?', sid || ''); return { cookie: '' }; });
-  R('GET', '/api/me', ({ user }) => ({ user: user || null, judge: judgeStatus() }));
+  const storage = () => { const p = persistStatus(); return { ...p, ephemeral: p.mode !== 'postgres' && !!process.env.RENDER && !String(process.env.DB_FILE || '').startsWith('/data') }; };
+  R('GET', '/api/me', ({ user }) => ({ user: user || null, judge: judgeStatus(), storage: user?.role === 'teacher' ? storage() : undefined }));
+  R('GET', '/api/health', () => ({ ok: true, storage: storage(), judge: judgeStatus().ok }));
   // Профил: ном, логин ва паролро худи корбар иваз мекунад (пароли ҷорӣ лозим аст)
   R('PUT', '/api/me', ({ user, body, sid }) => {
     need(user);

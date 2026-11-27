@@ -12,16 +12,21 @@ if (fs.existsSync(envFile)) {
   }
 }
 const { createApp } = await import('./app.js');
+const { restore, startSync, persistStatus } = await import('./persist.js');
 const { judgeStatus } = await import('./judge.js');
 
 const port = Number(process.env.PORT || 3000);
-const { server } = createApp({
-  dbFile: process.env.DB_FILE || path.join(root, 'data', 'codelab.db'),
+const dbFile = process.env.DB_FILE || path.join(root, 'data', 'codelab.db');
+await restore(dbFile);
+const { server, db } = createApp({
+  dbFile,
   staticDir: path.join(root, 'web', 'public'),
 });
+startSync(db, dbFile);
 server.listen(port, () => {
   const j = judgeStatus();
   console.log(`ILMSPACE CodeLab: http://localhost:${port}`);
   console.log(j.ok ? `Санҷандаи C++: ${j.driver}${j.url ? ' → ' + j.url : ''}` : `Санҷандаи C++ танзим нашудааст: ${j.reason}`);
   if (j.warning) console.log('ДИҚҚАТ: ' + j.warning);
+  console.log(persistStatus().mode === 'postgres' ? 'Маълумот: SQLite + нусхаи доимӣ дар Postgres' : `Маълумот: SQLite (${dbFile})`);
 });
