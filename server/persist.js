@@ -36,6 +36,8 @@ export function connectionInfo(env = process.env) {
   let host = '', port = '5432';
   try { const u = new URL(url.replace(/^postgres(ql)?:/i, 'http:')); host = u.hostname; port = u.port || '5432'; } catch {}
   return {
+    passwordLength: pwSet ? rawPw.length : undefined,
+    passwordSimple: pwSet ? /^[A-Za-z0-9]+$/.test(rawPw) : undefined,
     passwordFrom: pwSet ? 'DATABASE_PASSWORD' : (PLACEHOLDER.test(raw) ? 'нест' : 'DATABASE_URL (пароли дохили силка)'),
     databasePasswordSet: pwSet,
     pooler: /pooler\.supabase\.com$/i.test(host) ? (port === '6543' ? 'transaction' : 'session') : (/supabase\.co$/i.test(host) ? 'direct' : 'other'),

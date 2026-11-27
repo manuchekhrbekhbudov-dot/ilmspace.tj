@@ -10,6 +10,7 @@ import { seedDemo, createGroup, applyTemplate, problemData, ensureTeacher } from
 import { TOPICS, DEFAULT_STARTER } from './seed/problems.js';
 import { HttpError, bad, forbidden, notFound, J, token, hashPassword, checkPassword, inviteCode, dushanbeDate, localToUtcIso } from './util.js';
 
+const STARTED_AT = new Date().toISOString();
 export function createApp({ dbFile, staticDir, seed = true } = {}) {
   const db = openDb(dbFile);
   const Q = q(db);
@@ -342,7 +343,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   const storage = () => { const p = persistStatus(); return { ...p, ephemeral: p.mode !== 'postgres' && (p.mode === 'invalid' || (!!process.env.RENDER && !onMountedDisk())) }; };
 
   R('GET', '/api/me', ({ user }) => ({ user: user || null, judge: judgeStatus(), storage: user?.role === 'teacher' ? storage() : undefined }));
-  R('GET', '/api/health', () => ({ ok: true, storage: storage(), judge: judgeStatus().ok }));
+  R('GET', '/api/health', () => ({ ok: true, startedAt: STARTED_AT, storage: storage(), judge: judgeStatus().ok }));
   // Профил: ном, логин ва паролро худи корбар иваз мекунад (пароли ҷорӣ лозим аст)
   R('PUT', '/api/me', ({ user, body, sid }) => {
     need(user);
