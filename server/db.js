@@ -216,6 +216,8 @@ export function openDb(file) {
   const cols = db.prepare('PRAGMA table_info(lessons)').all().map(c => c.name);
   if (!cols.includes('kind')) db.exec("ALTER TABLE lessons ADD COLUMN kind TEXT NOT NULL DEFAULT 'lesson'");
   if (!cols.includes('extra_problem_ids')) db.exec("ALTER TABLE lessons ADD COLUMN extra_problem_ids TEXT NOT NULL DEFAULT '[]'");
+  const gcols = db.prepare('PRAGMA table_info(groups)').all().map(c => c.name);
+  if (!gcols.includes('lock_days')) db.exec('ALTER TABLE groups ADD COLUMN lock_days INTEGER NOT NULL DEFAULT 0');
   return db;
 }
 

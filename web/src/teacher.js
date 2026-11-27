@@ -26,8 +26,8 @@ export function TeacherHome() {
           </div>
           ${g.helpOpen > 0 && html`<span class="chip warn">✋ ${g.helpOpen} дархости ёрӣ</span>`}
           ${g.pendingCount > 0 && html`<a class="chip acc" href=${'#/g/' + g.id + '?tab=students'}>${g.pendingCount} шогирд интизори тасдиқ</a>`}
-          <a class="btn" href=${'#/g/' + g.id}>Гурӯҳ</a>
-          ${n && html`<a class=${'btn' + (main ? ' p' : '') + (g.live || isToday ? ' lg' : '')} href=${'#/live/' + n.id}>${g.live ? 'Ба дарси зинда гузар' : isToday ? 'Дарсро оғоз кун' : 'Дарсро кушо'}</a>`}
+          ${n && html`<a class="btn" href=${'#/live/' + n.id}>${g.live ? 'Дарси зинда' : 'Дарси зинда'}</a>`}
+          <a class=${'btn p' + (main ? ' lg' : '')} href=${'#/g/' + g.id}>Гурӯҳро кушо</a>
         </div>
       </div>`;
     })}</div>
@@ -76,6 +76,33 @@ function GroupForm({ onClose, onDone }) {
   <//>`;
 }
 
+function QuickStudents({ g, reload, openTab }) {
+  const [login, setLogin] = useState(''); const [err, setErr] = useState(null);
+  const active = g.members.filter(m => m.status === 'active'), pending = g.members.filter(m => m.status === 'pending');
+  const add = async e => { e.preventDefault(); setErr(null); try { await api(`/api/groups/${g.group.id}/members`, { method: 'POST', body: { login } }); setLogin(''); toast('Шогирд илова шуд. Масъалаҳо ҳозир дар саҳифаи ӯ пайдо мешаванд.'); reload(true); } catch (x) { setErr(x.message); } };
+  const approve = async id => { try { await api(`/api/groups/${g.group.id}/members`, { method: 'POST', body: { user_id: id } }); toast('Қабул шуд.'); reload(true); } catch (x) { setErr(x.message); } };
+  return html`<div class="card hl" style="margin-bottom:18px">
+    <div class="row" style="align-items:flex-start;gap:24px">
+      <div style="flex:1;min-width:260px">
+        <h3>1. Шогирдонро илова кунед</h3>
+        <p class="small muted">Шогирд дар сайт «Сабти ном» мекунад ва логинашро ба шумо мегӯяд. Логинро ин ҷо нависед — тамом: ҳамаи масъалаҳои курс худкор дар саҳифаи ӯ пайдо мешаванд.</p>
+        <form class="row" onSubmit=${add}><input class="i mono" style="flex:1" placeholder="логини шогирд" value=${login} onInput=${e => setLogin(e.target.value)} aria-label="Логини шогирд" /><button class="btn p" disabled=${!login.trim()}>Илова кун</button></form>
+        ${err && html`<div class="err" style="margin-top:6px">${err}</div>`}
+        ${pending.length > 0 && html`<div style="margin-top:10px">${pending.map(m => html`<div class="row" style="padding:3px 0"><span class="chip warn">нав</span><b>${m.name}</b><span class="mono small muted">${m.login}</span><button class="btn sm p" onClick=${() => approve(m.id)}>Қабул кун</button></div>`)}</div>`}
+      </div>
+      <div style="min-width:200px">
+        <h3>Ё рамзи даъват</h3>
+        <div class="mono" style="font-size:28px;font-weight:800;letter-spacing:.12em">${g.group.invite_code}</div>
+        <div class="small muted">Шогирд пас аз сабти ном ин рамзро ворид мекунад.</div>
+      </div>
+      <div style="min-width:160px">
+        <h3>Дар гурӯҳ</h3>
+        <div class="bigstat">${active.length}</div><a href="#" class="small" onClick=${e => { e.preventDefault(); openTab(); }}>рӯйхати шогирдон →</a>
+      </div>
+    </div>
+  </div>`;
+}
+
 export function GroupPage({ id, tab: tab0 }) {
   const [{ data, loading, error }, reload] = useLoad(() => Promise.all([api(`/api/groups/${id}`), api('/api/templates'), api('/api/problems')]), [id]);
   const [tab, setTab] = useState(tab0 || 'course');
@@ -86,7 +113,8 @@ export function GroupPage({ id, tab: tab0 }) {
   const pending = g.members.filter(m => m.status === 'pending');
   return html`<div class="page">
     <a href="#/" class="small">← Гурӯҳҳо</a>
-    <div class="row" style="margin:6px 0 14px"><h1>${g.group.name}</h1><span class="chip">Рамзи даъват: <b class="mono">${g.group.invite_code}</b></span></div>
+    <div class="row" style="margin:6px 0 14px"><h1>${g.group.name}</h1></div>
+    <${QuickStudents} g=${g} reload=${reload} openTab=${() => setTab('students')} />
     <div class="tabs" style="margin:0 0 16px;position:static;padding:0">
       ${[['course', 'Нақшаи курс'], ['lessons', `Ҷадвали дарсҳо (${g.lessons.length})`], ['students', `Шогирдон (${g.members.filter(m => m.status === 'active').length})${pending.length ? ` · ${pending.length} нав` : ''}`], ['homework', `Вазифаҳо (${g.assignments.length})`]].map(([k, t]) => html`<button class=${tab === k ? 'on' : ''} onClick=${() => setTab(k)}>${t}</button>`)}
     </div>

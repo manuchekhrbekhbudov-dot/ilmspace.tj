@@ -27,6 +27,7 @@ export function CourseMap({ gid, embedded }) {
   const all = weeks.flatMap(w => w.days);
   const focus = all.find(d => d.state === 'live') || all.find(d => d.state === 'today') || all.find(d => d.state === 'progress') || all.find(d => !d.locked && d.state !== 'done');
   return html`<div class=${embedded ? '' : 'page'}>
+    ${role === 'teacher' && html`<label class="row small" style="margin-bottom:10px;gap:8px"><input type="checkbox" checked=${group.lock_days} onChange=${async e => { await api('/api/groups/' + group.id, { method: 'PATCH', body: { lock_days: e.target.checked } }); reload(true); }} /> Рӯзҳои ояндаро барои шогирдон то санаи дарс пӯшида нигоҳ дор <span class="muted">(пешфарз: ҳамаи масъалаҳо кушодаанд)</span></label>`}
     ${!embedded && html`<div class="row" style="margin-bottom:6px"><h1>${group.name}</h1><span class="chip">${role === 'student' ? 'Нақшаи курс' : 'Нақшаи курс · устод'}</span></div>`}
     <p class="muted" style="margin-bottom:18px">${weeks.length} ҳафта · ҳар ҳафта 5 рӯзи дарс ва 1 имтиҳон · дарсҳо соати ${group.lesson_time} (вақти Душанбе)${focus ? html` · <a href="#" onClick=${e => { e.preventDefault(); setOpen(focus); }}>ба рӯзи ҷорӣ гузар →</a>` : ''}</p>
     <div class="col" style="gap:26px">${weeks.map(w => html`<section>

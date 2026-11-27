@@ -406,6 +406,12 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     });
     return { group: g, members: mem, lessons, assignments: asg };
   });
+  R('PATCH', '/api/groups/:id', ({ user, params, body }) => {
+    need(user, 'teacher'); const gid = Number(params.id); if (!ownsGroup(user, gid)) throw forbidden();
+    if ('lock_days' in body) Q.run('UPDATE groups SET lock_days=? WHERE id=?', body.lock_days ? 1 : 0, gid);
+    if (body.name) Q.run('UPDATE groups SET name=? WHERE id=?', String(body.name).trim(), gid);
+    publish(groupAudience(gid), { type: 'lesson', group_id: gid }); return { ok: true };
+  });
   R('POST', '/api/groups/:id/invite', ({ user, params }) => {
     need(user, 'teacher'); const gid = Number(params.id); if (!ownsGroup(user, gid)) throw forbidden();
     let code; do { code = inviteCode(); } while (Q.get('SELECT 1 FROM groups WHERE invite_code=?', code));
@@ -512,7 +518,9 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   });
 
   // ───── Нақшаи курс: ҳафта → рӯз → маҷмӯаҳо (синфӣ, хонагӣ, иловагӣ) ─────
-  const isLocked = (u, l) => u.role !== 'teacher' && l.status !== 'live' && l.status !== 'finished' && dushanbeDate(l.scheduled_at) > dushanbeDate();
+  // Пешфарз ҳамаи масъалаҳо барои шогирд кушодаанд; устод метавонад рӯзҳои ояндаро пӯшад
+  const isLocked = (u, l) => u.role !== 'teacher' && l.status !== 'live' && l.status !== 'finished' && dushanbeDate(l.scheduled_at) > dushanbeDate()
+    && !!Q.get('SELECT lock_days FROM groups WHERE id=?', l.group_id)?.lock_days;
   function lessonSets(l) {
     const cls = Q.all("SELECT problem_id FROM lesson_steps WHERE lesson_id=? AND kind='problem' AND skipped=0 AND problem_id IS NOT NULL ORDER BY position", l.id).map(r => r.problem_id);
     return { class: [...new Set(cls)], home: J(l.homework_problem_ids) || [], extra: J(l.extra_problem_ids) || [] };
@@ -545,7 +553,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     });
     const weeks = [];
     for (const x of days) { if (!weeks[x.week - 1]) weeks[x.week - 1] = { week: x.week, days: [] }; weeks[x.week - 1].days.push(x); }
-    return { group: { id: g.id, name: g.name, lesson_time: g.lesson_time }, weeks, role: u.role };
+    return { group: { id: g.id, name: g.name, lesson_time: g.lesson_time, lock_days: !!g.lock_days }, weeks, role: u.role };
   }
   R('GET', '/api/groups/:id/course', ({ user, params }) => courseFor(need(user), Number(params.id)));
   R('GET', '/api/course', ({ user }) => {
