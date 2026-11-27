@@ -45,7 +45,11 @@ function Auth({ onAuth }) {
   const [f, setF] = useState({ name: '', login: '', password: '' });
   const [err, setErr] = useState(null); const [busy, setBusy] = useState(false);
   const submit = async e => {
-    e.preventDefault(); setBusy(true); setErr(null);
+    e.preventDefault(); setErr(null);
+    if (mode === 'register' && f.name.trim().length < 2) return setErr('Ном ва насабро нависед.');
+    if (!f.login.trim()) return setErr('Логинро нависед.');
+    if (!f.password) return setErr('Паролро нависед.');
+    setBusy(true);
     try { const r = await api(mode === 'login' ? '/api/login' : '/api/register', { method: 'POST', body: f }); onAuth(r.user); }
     catch (x) { setErr(x.message); } finally { setBusy(false); }
   };
@@ -57,10 +61,10 @@ function Auth({ onAuth }) {
         <button class=${mode === 'login' ? 'on' : ''} onClick=${() => setMode('login')}>Ворид шав</button>
         <button class=${mode === 'register' ? 'on' : ''} onClick=${() => setMode('register')}>Сабти ном (шогирд)</button>
       </div>
-      <form class="col" onSubmit=${submit}>
-        ${mode === 'register' && html`<label class="f">Ном ва насаб<input class="i" autocomplete="name" value=${f.name} onInput=${e => setF({ ...f, name: e.target.value })} placeholder="Мадина Азизова" required /></label>`}
-        <label class="f">Логин<input class="i mono" autocomplete="username" autocapitalize="off" value=${f.login} onInput=${e => setF({ ...f, login: e.target.value })} required placeholder=${mode === 'register' ? 'масалан: madina2012 ё мадина' : ''} /></label>
-        <label class="f">Парол<input class="i" type="password" autocomplete=${mode === 'login' ? 'current-password' : 'new-password'} value=${f.password} onInput=${e => setF({ ...f, password: e.target.value })} required /></label>
+      <form class="col" onSubmit=${submit} noValidate>
+        ${mode === 'register' && html`<label class="f">Ном ва насаб<input class="i" autocomplete="name" value=${f.name} onInput=${e => setF({ ...f, name: e.target.value })} placeholder="Мадина Азизова" /></label>`}
+        <label class="f">Логин<input class="i mono" autocomplete="username" autocapitalize="off" value=${f.login} onInput=${e => setF({ ...f, login: e.target.value })} placeholder=${mode === 'register' ? 'масалан: madina2012 ё мадина' : ''} /></label>
+        <label class="f">Парол<input class="i" type="password" autocomplete=${mode === 'login' ? 'current-password' : 'new-password'} value=${f.password} onInput=${e => setF({ ...f, password: e.target.value })} /></label>
         ${mode === 'register' && html`<div class="small muted">Логин: 3–32 аломат, бе фосила. Парол: ҳадди ақал 8 аломат.</div>`}
         ${err && html`<div class="err" role="alert">${err}</div>`}
         <button class="btn p lg" disabled=${busy}>${busy ? html`<span class="spin"></span>` : ''} ${mode === 'login' ? 'Ворид шав' : 'Сабти ном кун'}</button>
