@@ -1,0 +1,25 @@
+{
+  "name": "ilmspace-codelab",
+  "version": "1.0.0",
+  "description": "ILMSPACE CodeLab — синфхонаи онлайни C++",
+  "scripts": {
+    "test": "node tests/acceptance.cjs",
+    "build": "node scripts/build.js",
+    "start": "node scripts/build.js && node server/index.js",
+    "dev": "node scripts/build.js && node server/index.js",
+    "verify": "node scripts/verify-problems.js",
+    "test:acceptance": "node scripts/build.js && node tests/acceptance.cjs"
+  },
+  "dependencies": {
+    "@codemirror/lang-cpp": "^6.0.3",
+    "@codemirror/search": "^6.7.3",
+    "@codemirror/theme-one-dark": "^6.1.3",
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "codemirror": "^6.0.2",
+    "esbuild": "^0.28.2",
+    "htm": "^3.1.1",
+    "preact": "^10.29.8"
+  },
+  "type": "module"
+}

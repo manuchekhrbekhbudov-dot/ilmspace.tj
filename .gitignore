@@ -1,0 +1,7 @@
+node_modules/
+data/
+.env
+web/public/app.js
+web/public/app.js.map
+web/public/fonts/
+web/public/fonts.css
