@@ -6,7 +6,7 @@ import { openDb, q } from './db.js';
 import { judgeAll, runOnce, judgeStatus, normalizeOutput, queueDepth } from './judge.js';
 import { persistStatus } from './persist.js';
 import { explainCompile, explainRuntime } from './explain.js';
-import { seedDemo, createGroup, applyTemplate, problemData, ensureTeacher } from './seed.js';
+import { seedDemo, createGroup, applyTemplate, problemData, ensureTeacher, migrateCourse } from './seed.js';
 import { TOPICS, DEFAULT_STARTER } from './seed/problems.js';
 import { HttpError, bad, forbidden, notFound, J, token, hashPassword, checkPassword, inviteCode, dushanbeDate, localToUtcIso } from './util.js';
 
@@ -15,6 +15,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   const db = openDb(dbFile);
   const Q = q(db);
   if (seed) seedDemo(Q);
+  if (migrateCourse(Q)) console.log('Курси нав (220 масъала) ба база илова шуд.');
   const t = ensureTeacher(Q);
   if (t) console.log(`Ҳисоби устод омода аст: ${t.login}${t.fromDemo ? ' (гурӯҳҳо ва дарси омода ба он гузаштанд)' : ''}`);
 
@@ -247,14 +248,19 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     const assignments = asg.map(a => ({ ...a, problems: assignmentStatus(a, u.id) }));
     const nearest = assignments.find(a => a.due_at >= new Date().toISOString() && a.problems.some(p => p.state !== 'submitted' && p.state !== 'late'))
       || assignments.find(a => a.due_at >= new Date().toISOString()) || null;
-    const all = Q.all('SELECT id, topic FROM problems WHERE current_version>0 ORDER BY position').filter(p => !J(Q.get('SELECT data FROM problem_versions WHERE problem_id=? AND version=(SELECT current_version FROM problems WHERE id=?)', p.id, p.id).data).lessonOnly);
-    const progress = TOPICS.map(t => { const ps = all.filter(p => p.topic === t.key); return { topic: t.key, title: t.title, total: ps.length, solved: ps.filter(p => solved.has(p.id)).length }; });
-    return { groups, todayLesson, continue: cont, nearestAssignment: nearest, assignments, progress, recommendation: recommend(u.id, solved, all) };
+    const acc = studentAccess(u.id);
+    const all = Q.all('SELECT id, topic FROM problems WHERE current_version>0 ORDER BY position');
+    const inPlan = all.filter(p => acc.plan.has(p.id) && !acc.exam.has(p.id));
+    const openList = inPlan.filter(p => acc.open.has(p.id));
+    // Пешрафт танҳо аз рӯи масъалаҳои кушодашуда (рӯзҳои пӯшида ҳисоб намешаванд)
+    const progress = TOPICS.map(t => { const ps = openList.filter(p => p.topic === t.key); return { topic: t.key, title: t.title, total: ps.length, solved: ps.filter(p => solved.has(p.id)).length }; }).filter(p => p.total > 0);
+    return { groups, todayLesson, continue: cont && acc.open.has(cont.problem_id) ? cont : null, nearestAssignment: nearest, assignments, progress, recommendation: recommend(u.id, solved, openList) };
   }
   function recommend(uid, solved, all) {
     const failed = Q.all(`SELECT g.failed_tags, s.problem_id FROM submissions s JOIN gradings g ON g.submission_id=s.id
       WHERE s.user_id=? AND g.verdict NOT IN ('AC','SE','CE') ORDER BY s.id DESC LIMIT 50`, uid);
-    const practice = Q.all('SELECT id, practice_tags, current_version FROM problems WHERE current_version>0');
+    const allowed = new Set(all.map(p => p.id));
+    const practice = Q.all('SELECT id, practice_tags, current_version FROM problems WHERE current_version>0').filter(p => allowed.has(p.id));
     for (const f of failed) for (const tag of J(f.failed_tags) || []) {
       const p = practice.find(p => (J(p.practice_tags) || []).includes(tag) && !solved.has(p.id) && p.id !== f.problem_id);
       if (p) {
@@ -509,7 +515,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   R('POST', '/api/lessons/:id/start', ({ user, params }) => {
     need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
     Q.run("UPDATE lessons SET status='finished', ended_at=COALESCE(ended_at, strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE group_id=? AND status='live' AND id!=?", l.group_id, l.id);
-    Q.run("UPDATE lessons SET status='live', started_at=COALESCE(started_at, strftime('%Y-%m-%dT%H:%M:%fZ','now')), ended_at=NULL WHERE id=?", l.id);
+    Q.run("UPDATE lessons SET status='live', opened=1, started_at=COALESCE(started_at, strftime('%Y-%m-%dT%H:%M:%fZ','now')), ended_at=NULL WHERE id=?", l.id);
     lessonEvent(l); return { ok: true };
   });
   R('POST', '/api/lessons/:id/finish', ({ user, params }) => {
@@ -577,9 +583,31 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   });
 
   // ───── Нақшаи курс: ҳафта → рӯз → маҷмӯаҳо (синфӣ, хонагӣ, иловагӣ) ─────
-  // Пешфарз ҳамаи масъалаҳо барои шогирд кушодаанд; устод метавонад рӯзҳои ояндаро пӯшад
-  const isLocked = (u, l) => u.role !== 'teacher' && l.status !== 'live' && l.status !== 'finished' && dushanbeDate(l.scheduled_at) > dushanbeDate()
-    && !!Q.get('SELECT lock_days FROM groups WHERE id=?', l.group_id)?.lock_days;
+  // Рӯзро танҳо устод мекушояд (ё бо оғози дарс). То кушодан шогирд ба он даромада наметавонад.
+  const isOpen = l => !!l.opened || l.status === 'live' || l.status === 'finished';
+  const isLocked = (u, l) => u.role !== 'teacher' && !isOpen(l);
+  // Масъалаҳое, ки шогирд дида метавонад: аз рӯзҳои кушода ва вазифаҳои хонагии гурӯҳҳояш
+  function studentAccess(uid) {
+    const open = new Set(), exam = new Map(), plan = new Set();
+    for (const { group_id } of Q.all("SELECT group_id FROM group_members WHERE user_id=? AND status='active'", uid)) {
+      for (const l of Q.all('SELECT * FROM lessons WHERE group_id=?', group_id)) {
+        const s = lessonSets(l); const ids = [...s.class, ...s.home, ...s.extra];
+        ids.forEach(id => plan.add(id));
+        if (l.kind === 'exam') ids.forEach(id => exam.set(id, l.id));
+        if (isOpen(l)) ids.forEach(id => open.add(id));
+      }
+      for (const a of Q.all('SELECT problem_ids FROM assignments WHERE group_id=?', group_id)) (J(a.problem_ids) || []).forEach(id => open.add(id));
+    }
+    return { open, exam, plan };
+  }
+  const examRow = (lid, uid) => Q.get('SELECT count, blocked, last_type FROM exam_violations WHERE lesson_id=? AND user_id=?', lid, uid) || { count: 0, blocked: 0 };
+  function assertProblemAccess(u, pid) {
+    if (u.role === 'teacher') return;
+    const { open, exam } = studentAccess(u.id);
+    if (!open.has(pid)) throw forbidden('Ин масъала ҳанӯз кушода нашудааст — устод рӯзро мекушояд.');
+    const lid = exam.get(pid);
+    if (lid && examRow(lid, u.id).blocked) throw new HttpError(403, 'Шумо аз ин имтиҳон блок шудед (3 вайронкунӣ). Ба устод муроҷиат кунед.', { blocked: true });
+  }
   function lessonSets(l) {
     const cls = Q.all("SELECT problem_id FROM lesson_steps WHERE lesson_id=? AND kind='problem' AND skipped=0 AND problem_id IS NOT NULL ORDER BY position", l.id).map(r => r.problem_id);
     return { class: [...new Set(cls)], home: J(l.homework_problem_ids) || [], extra: J(l.extra_problem_ids) || [] };
@@ -604,10 +632,10 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
       const date = dushanbeDate(l.scheduled_at);
       const locked = isLocked(u, l);
       const all = [...sets.class, ...sets.home, ...sets.extra];
-      const state = l.status === 'live' ? 'live' : date === today ? 'today' : locked ? 'locked'
+      const state = l.status === 'live' ? 'live' : locked ? 'locked' : u.role === 'teacher' && !isOpen(l) ? 'closed' : date === today ? 'today'
         : (u.role === 'student' && all.length && all.every(id => solved.has(id))) || (u.role === 'teacher' && l.status === 'finished') ? 'done'
         : date < today ? 'progress' : 'planned';
-      return { id: l.id, number: l.number, week: w, day: d, kind: l.kind, title: l.title, topic: l.topic, scheduled_at: l.scheduled_at, status: l.status, state, locked,
+      return { id: l.id, number: l.number, week: w, day: d, kind: l.kind, title: l.title, topic: l.topic, scheduled_at: l.scheduled_at, status: l.status, state, locked, opened: isOpen(l),
         sets: { class: count(sets.class), home: count(sets.home), extra: count(sets.extra) } };
     });
     const weeks = [];
@@ -623,12 +651,50 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   });
   R('GET', '/api/lessons/:id/sets', ({ user, params }) => {
     need(user); const l = lessonFor(user, Number(params.id));
-    if (isLocked(user, l)) throw forbidden('Ин рӯз ҳанӯз кушода нашудааст.');
+    if (isLocked(user, l)) throw forbidden('Ин рӯз ҳанӯз кушода нашудааст — устод онро мекушояд.');
+    let exam;
+    if (l.kind === 'exam' && user.role === 'student') {
+      const e = examRow(l.id, user.id);
+      if (e.blocked) throw new HttpError(403, 'Шумо аз ин имтиҳон блок шудед (3 вайронкунӣ). Танҳо устод метавонад шуморо боз кунад.', { blocked: true });
+      exam = { count: e.count, max: 3 };
+    }
     const sets = lessonSets(l);
     const solved = user.role === 'student' ? solvedSet(user.id) : new Set();
     const mk = ids => ids.map(pid => ({ id: pid, title: titleOf(pid), solved: solved.has(pid) }));
-    return { lesson: { id: l.id, number: l.number, title: l.title, kind: l.kind, status: l.status, group_id: l.group_id, scheduled_at: l.scheduled_at },
-      sets: { class: mk(sets.class), home: mk(sets.home), extra: mk(sets.extra) } };
+    return { lesson: { id: l.id, number: l.number, title: l.title, kind: l.kind, status: l.status, group_id: l.group_id, scheduled_at: l.scheduled_at, opened: isOpen(l) },
+      sets: { class: mk(sets.class), home: mk(sets.home), extra: mk(sets.extra) }, exam };
+  });
+  R('POST', '/api/lessons/:id/open', ({ user, params, body }) => {
+    need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
+    Q.run('UPDATE lessons SET opened=? WHERE id=?', body.opened === false ? 0 : 1, l.id);
+    lessonEvent(l); return { ok: true, opened: body.opened !== false };
+  });
+  // Имтиҳон: вайронкунӣ (нусхабардорӣ, рафтан ба равзанаи дигар). 3 → блоки худкор.
+  R('POST', '/api/lessons/:id/violation', ({ user, params, body }) => {
+    need(user, 'student'); const l = lessonFor(user, Number(params.id));
+    if (l.kind !== 'exam') throw bad('Ин имтиҳон нест.');
+    const prev = Q.get('SELECT * FROM exam_violations WHERE lesson_id=? AND user_id=?', l.id, user.id);
+    if (prev?.blocked) return { count: prev.count, blocked: true };
+    if (prev && Date.now() - Date.parse(prev.updated_at) < 2500) return { count: prev.count, blocked: false, ignored: true }; // як амал — як вайронкунӣ
+    const type = String(body.type || 'other').slice(0, 20);
+    Q.run(`INSERT INTO exam_violations (lesson_id, user_id, count, last_type) VALUES (?,?,1,?)
+      ON CONFLICT(lesson_id, user_id) DO UPDATE SET count=count+1, last_type=excluded.last_type, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')`, l.id, user.id, type);
+    Q.run('INSERT INTO exam_events (lesson_id, user_id, type) VALUES (?,?,?)', l.id, user.id, type);
+    const r = Q.get('SELECT count FROM exam_violations WHERE lesson_id=? AND user_id=?', l.id, user.id);
+    const blocked = r.count >= 3;
+    if (blocked) Q.run('UPDATE exam_violations SET blocked=1 WHERE lesson_id=? AND user_id=?', l.id, user.id);
+    publish([Q.get('SELECT teacher_id FROM groups WHERE id=?', l.group_id).teacher_id], { type: 'exam', lesson_id: l.id, group_id: l.group_id, user_id: user.id });
+    return { count: r.count, blocked };
+  });
+  R('GET', '/api/lessons/:id/exam', ({ user, params }) => {
+    need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
+    return members(l.group_id).map(m => { const e = examRow(l.id, m.id); return { user: m, count: e.count, blocked: !!e.blocked, last_type: e.last_type || null }; });
+  });
+  R('POST', '/api/lessons/:id/unblock', ({ user, params, body }) => {
+    need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
+    Q.run('UPDATE exam_violations SET count=0, blocked=0 WHERE lesson_id=? AND user_id=?', l.id, Number(body.user_id));
+    publish([Number(body.user_id)], { type: 'lesson', lesson_id: l.id, group_id: l.group_id });
+    return { ok: true };
   });
   R('PUT', '/api/lessons/:id/sets', ({ user, params, body }) => {
     need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
@@ -694,9 +760,11 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   R('GET', '/api/problems', ({ user }) => {
     need(user);
     const solved = user.role === 'student' ? solvedSet(user.id) : new Set();
+    const acc = user.role === 'student' ? studentAccess(user.id) : null;
     return Q.all('SELECT * FROM problems ORDER BY position, id').map(p => {
+      if (acc && (!acc.open.has(p.id) || acc.exam.has(p.id))) return null;
       const v = p.current_version ? J(Q.get('SELECT data FROM problem_versions WHERE problem_id=? AND version=?', p.id, p.current_version).data) : (J(p.draft) || {});
-      if (user.role === 'student' && (!p.current_version || v.lessonOnly)) return null;
+      if (user.role === 'student' && !p.current_version) return null;
       return { id: p.id, slug: p.slug, topic: p.topic, title: v.title || 'Масъалаи нав', level: v.level, version: p.current_version, hasDraft: !!p.draft, lessonOnly: !!v.lessonOnly, solved: solved.has(p.id), practice_tags: J(p.practice_tags) };
     }).filter(Boolean);
   });
@@ -708,6 +776,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
       const cur = p.current_version ? J(Q.get('SELECT data FROM problem_versions WHERE problem_id=? AND version=?', pid, Number(query.v) || p.current_version).data) : null;
       return { id: p.id, slug: p.slug, topic: p.topic, current_version: p.current_version, practice_tags: J(p.practice_tags), versions, published: cur, draft: J(p.draft), public: p.current_version ? publicProblem(pid, Number(query.v) || undefined) : null };
     }
+    assertProblemAccess(user, pid);
     return publicProblem(pid, Number(query.v) || undefined);
   });
   R('POST', '/api/problems', ({ user, body }) => {
@@ -763,13 +832,13 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
 
   // Нусхаи машқӣ (draft)
   R('GET', '/api/drafts/:pid', ({ user, params }) => {
-    need(user, 'student'); const pid = Number(params.pid); const pp = publicProblem(pid);
+    need(user, 'student'); const pid = Number(params.pid); assertProblemAccess(user, pid); const pp = publicProblem(pid);
     const d = Q.get('SELECT code, stdin, rev, device, updated_at FROM drafts WHERE user_id=? AND problem_id=?', user.id, pid);
     const saved = Q.all('SELECT id, code, device, created_at FROM draft_conflicts WHERE user_id=? AND problem_id=? ORDER BY id DESC LIMIT 10', user.id, pid);
     return d ? { ...d, saved } : { code: pp.starter || DEFAULT_STARTER, stdin: pp.examples?.[0]?.input || '', rev: 0, saved };
   });
   R('PUT', '/api/drafts/:pid', ({ user, params, body }) => {
-    need(user, 'student'); const pid = Number(params.pid); publicProblem(pid);
+    need(user, 'student'); const pid = Number(params.pid); assertProblemAccess(user, pid); publicProblem(pid);
     const code = String(body.code ?? '').slice(0, 100000), stdin = String(body.stdin ?? '').slice(0, 100000), device = String(body.device || '').slice(0, 64);
     const row = Q.get('SELECT * FROM drafts WHERE user_id=? AND problem_id=?', user.id, pid);
     if (!row) {
@@ -798,14 +867,14 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     running.add(user.id);
     try {
       let lim = {};
-      if (body.problem_id) { const { data } = versionData(Number(body.problem_id)); if (data) lim = { timeMs: data.timeMs, memoryMb: data.memoryMb }; }
+      if (body.problem_id) { assertProblemAccess(user, Number(body.problem_id)); const { data } = versionData(Number(body.problem_id)); if (data) lim = { timeMs: data.timeMs, memoryMb: data.memoryMb }; }
       const r = await runOnce(String(body.code ?? ''), String(body.stdin ?? ''), lim);
       return { ...r, compileExplain: explainCompile(r.compile), explain: explainRuntime(r) };
     } finally { running.delete(user.id); }
   });
   R('POST', '/api/submissions', ({ user, body }) => {
     need(user, 'student');
-    const pid = Number(body.problem_id); const pp = publicProblem(pid);
+    const pid = Number(body.problem_id); assertProblemAccess(user, pid); const pp = publicProblem(pid);
     const tok = String(body.client_token || '').slice(0, 80); if (tok.length < 8) throw bad('client_token лозим аст.');
     const ex = Q.get('SELECT * FROM submissions WHERE user_id=? AND client_token=?', user.id, tok);
     if (ex) return submissionView(ex, user);

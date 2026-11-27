@@ -203,6 +203,26 @@ CREATE TABLE IF NOT EXISTS projector_state (
   updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+
+-- Имтиҳон: вайронкуниҳо (нусхабардорӣ, рафтан ба равзанаи дигар). 3 → блок; танҳо устод мекушояд.
+CREATE TABLE IF NOT EXISTS exam_violations (
+  lesson_id INTEGER NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  count INTEGER NOT NULL DEFAULT 0,
+  blocked INTEGER NOT NULL DEFAULT 0,
+  last_type TEXT,
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  PRIMARY KEY (lesson_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS exam_events (
+  id INTEGER PRIMARY KEY,
+  lesson_id INTEGER NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_sub_user_problem ON submissions(user_id, problem_id);
 CREATE INDEX IF NOT EXISTS idx_sub_lesson ON submissions(lesson_id);
 CREATE INDEX IF NOT EXISTS idx_help_group ON help_requests(group_id, status);
@@ -218,6 +238,7 @@ export function openDb(file) {
   // Муҳоҷират: сохтори «ҳафта → рӯз → маҷмӯаҳо»
   const cols = db.prepare('PRAGMA table_info(lessons)').all().map(c => c.name);
   if (!cols.includes('kind')) db.exec("ALTER TABLE lessons ADD COLUMN kind TEXT NOT NULL DEFAULT 'lesson'");
+  if (!cols.includes('opened')) db.exec('ALTER TABLE lessons ADD COLUMN opened INTEGER NOT NULL DEFAULT 0');
   if (!cols.includes('extra_problem_ids')) db.exec("ALTER TABLE lessons ADD COLUMN extra_problem_ids TEXT NOT NULL DEFAULT '[]'");
   const gcols = db.prepare('PRAGMA table_info(groups)').all().map(c => c.name);
   if (!gcols.includes('lock_days')) db.exec('ALTER TABLE groups ADD COLUMN lock_days INTEGER NOT NULL DEFAULT 0');

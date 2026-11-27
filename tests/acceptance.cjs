@@ -159,7 +159,7 @@ async function main() {
   await shot(T.page, '02-teacher-board-solved');
   await A.page.goto(U(P) + '/#/'); await A.page.waitForSelector('text=Пешрафт аз рӯи мавзӯъ');
   const prog = await A.page.textContent('.grid2 > .col:last-child');
-  check('Пешрафти шогирд: «Шартҳо 1 аз 4 ҳал шуд»', /Шартҳо\s*1\s*аз 4/.test(prog), prog.match(/Шартҳо[^Д]*/)?.[0]);
+  check('Пешрафти шогирд: «Шартҳо 1 аз N ҳал шуд» (танҳо рӯзҳои кушода)', /Шартҳо\s*1\s*аз \d+/.test(prog), prog.match(/Шартҳо[^Д]*/)?.[0]);
 
   // ───────── 3 ─────────
   sec('3) Як шогирд чанд ҷавоби нодуруст — дар ҳисобот як нафар');
@@ -378,6 +378,7 @@ async function main() {
   sec('8) Телефон 360px: аз хондани шарт то натиҷа');
   const M = await session('shogird', { ctx: { viewport: { width: 360, height: 740 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 } });
   const ARR = pid('arr-1');
+  await api(T.page, 'POST', `/api/groups/${g1.id}/assignments`, { problem_ids: [ARR], due_local: '2030-01-01T18:00', title: 'Массивҳо' });
   await M.page.goto(U(P) + `/#/p/${ARR}`);
   await M.page.waitForSelector('.mtabs');
   await shot(M.page, '08-mobile-statement');
@@ -426,6 +427,37 @@ async function main() {
     const okN = (out.match(/^✓/gm) || []).length, badN = (out.match(/^✗/gm) || []).length;
     check(`Масъалаҳо: ${okN} гузашт, ${badN} номувофиқ`, badN === 0 && okN === 25, out.split('\n').find(l => l.startsWith('Назорати манфӣ')));
   } catch (e) { check('verify-problems', false, e.stdout || e.message); }
+
+  // ───────── 10 ─────────
+  sec('10) Рӯзҳоро устод мекушояд · имтиҳон бо назорат');
+  {
+    const crs = (await api(T.page, 'GET', `/api/groups/${g1.id}/course`)).data;
+    const days = crs.weeks.flatMap(w => w.days);
+    const closedDay = days.find(d => d.kind === 'lesson' && !d.opened && d.status === 'planned');
+    const examDay = days.find(d => d.kind === 'exam');
+    const S2 = await session('shogird');
+    const setsBefore = await api(S2.page, 'GET', `/api/lessons/${closedDay.id}/sets`);
+    check('Рӯзи пӯшида: шогирд ба маҷмӯаҳо даромада наметавонад (403)', setsBefore.status === 403, String(setsBefore.status));
+    await api(T.page, 'POST', `/api/lessons/${closedDay.id}/open`, { opened: true });
+    const setsAfter = await api(S2.page, 'GET', `/api/lessons/${closedDay.id}/sets`);
+    const cnt = setsAfter.data?.sets ? ['class', 'home', 'extra'].reduce((a, k) => a + setsAfter.data.sets[k].length, 0) : 0;
+    check('Пас аз «Рӯзро кушо»: 10 масъала (4 синфӣ + 3 хонагӣ + 3 иловагӣ)', setsAfter.status === 200 && cnt === 10, `status=${setsAfter.status}, ${cnt}`);
+    await api(T.page, 'POST', `/api/lessons/${examDay.id}/open`, { opened: true });
+    let last;
+    for (const t of ['copy', 'paste', 'blur']) { last = await api(S2.page, 'POST', `/api/lessons/${examDay.id}/violation`, { type: t }); await S2.page.waitForTimeout(2700); }
+    check('3 вайронкунӣ дар имтиҳон → блоки худкор', last.data?.blocked === true || last.data?.blocked === 1, JSON.stringify(last.data));
+    const exSets = await api(S2.page, 'GET', `/api/lessons/${examDay.id}/sets`);
+    check('Шогирди блокшуда имтиҳонро кушода наметавонад', exSets.status === 403, String(exSets.status));
+    const sid = (await api(T.page, 'GET', `/api/groups/${g1.id}`)).data.members.find(m => m.login === 'shogird').id;
+    await api(T.page, 'POST', `/api/lessons/${examDay.id}/unblock`, { user_id: sid });
+    const exSets2 = await api(S2.page, 'GET', `/api/lessons/${examDay.id}/sets`);
+    check('Танҳо устод блокро бардошт → шогирд боз даромад', exSets2.status === 200, String(exSets2.status));
+    const selfUnblock = await api(S2.page, 'POST', `/api/lessons/${examDay.id}/unblock`, { user_id: sid });
+    check('Шогирд худаш блокро бардошта наметавонад', selfUnblock.status === 403, String(selfUnblock.status));
+    await S2.page.goto(U(P) + `/#/set/${closedDay.id}/class/0`); await S2.page.waitForFunction(() => !!window.__editor);
+    check('Тугмаи «Устод, ёрӣ лозим» нест', (await S2.page.locator('text=Устод, ёрӣ лозим').count()) === 0);
+    await S2.ctx.close();
+  }
 
   check('Дар браузер хатои JavaScript набуд', errors.length === 0, errors.join(' | '));
   await browser.close();

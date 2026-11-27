@@ -18,7 +18,7 @@ function useResizer(varName, key, def, axis, min, max) {
   return [size, start, onKey, varName];
 }
 
-export function Workspace({ user, pid, lessonId }) {
+export function Workspace({ user, pid, lessonId, exam }) {
   const [problem, setProblem] = useState(() => store.get(`prob:${pid}`));
   const [loadErr, setLoadErr] = useState(null);
   const [code, setCode] = useState(null);
@@ -186,11 +186,10 @@ export function Workspace({ user, pid, lessonId }) {
         <div class="io3" style="grid-template-columns:1fr 1fr"><div><div class="kicker">Вуруд</div><pre>${ex.input}</pre></div><div><div class="kicker">Баромад</div><pre>${ex.output}</pre></div></div>
         ${ex.explain && html`<div class="small muted" style="margin-top:6px">${ex.explain}</div>`}
       </div>`)}
-      ${problem.hints?.filter(Boolean).length > 0 && html`<h3 style="margin-top:14px">Ишораҳо</h3>
+      ${!exam && problem.hints?.filter(Boolean).length > 0 && html`<h3 style="margin-top:14px">Ишораҳо</h3>
         ${problem.hints.filter(Boolean).slice(0, hints).map((t, i) => html`<div class="notice" style="margin-bottom:8px"><b>${i + 1}.</b> ${t}</div>`)}
         ${hints < problem.hints.filter(Boolean).length ? html`<button class="btn" onClick=${openHint}>Ишораи ${hints + 1}-ро кушо</button>` : html`<div class="small muted">Ҳамаи ишораҳо кушода шуданд.</div>`}`}
-      <div class="sep"></div>
-      <button class="btn" onClick=${() => setHelp(true)}>✋ Устод, ёрӣ лозим</button>
+
     </section>
     <div class="resizer" role="separator" aria-orientation="vertical" aria-label="Бари панелҳо" tabindex="0" onPointerDown=${startL} onKeyDown=${keyL}></div>
     <section class="ws-right" aria-label="Код ва натиҷа">
@@ -232,7 +231,6 @@ export function Workspace({ user, pid, lessonId }) {
     </section>
     <div class="mbar">${actions}</div>
     ${conflict && html`<${ConflictModal} c=${conflict} onPick=${resolve} />`}
-    ${help && html`<${HelpModal} pid=${pid} lessonId=${lessonId} attempts=${attempts} onClose=${() => setHelp(false)} />`}
   </div>`;
 }
 

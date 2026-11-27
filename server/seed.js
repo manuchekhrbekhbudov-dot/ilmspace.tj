@@ -1,4 +1,5 @@
 // Пур кардани база: масъалаҳо, дарси намунавӣ, ҳисобҳои намоишӣ ва гурӯҳи омода
+import fs from 'node:fs';
 import { PROBLEMS, LESSON_PROBLEMS, TOPICS, DEFAULT_STARTER } from './seed/problems.js';
 import { hashPassword, inviteCode, lessonDates, localToUtcIso } from './util.js';
 
@@ -62,34 +63,54 @@ export function seedProblems(Q, ownerId) {
   }
 }
 
-// Нақшаи курси 1-моҳа: 4 ҳафта × (5 рӯзи дарс + 1 имтиҳон) = 24 дарс.
-// Ҳар рӯз се маҷмӯа дорад: синфӣ, хонагӣ ва иловагӣ.
-const WEEK_TOPICS = [
-  ['io', 'io', 'io', 'cond', 'cond'],
-  ['cond', 'cond', 'loops', 'loops', 'loops'],
-  ['loops', 'arrays', 'arrays', 'arrays', 'strings'],
-  ['strings', 'strings', 'funcs', 'funcs', 'funcs'],
-];
-export function coursePlan() {
-  const plan = []; const seen = {};
-  const tTitle = k => TOPICS.find(t => t.key === k).title;
-  WEEK_TOPICS.forEach((days, w) => {
-    days.forEach((topic, d) => {
-      const ps = PROBLEMS.filter(p => p.topic === topic).map(p => p.slug);
-      const k = seen[topic] = (seen[topic] ?? -1) + 1;
-      const c = Math.min(k, ps.length - 1);
-      const cls = [ps[c]];
-      const home = [ps[Math.min(c + 1, ps.length - 1)]].filter(x => !cls.includes(x));
-      if (!home.length) home.push(ps[Math.max(0, c - 1)]);
-      const extra = ps.filter(x => !cls.includes(x) && !home.includes(x) && ps.indexOf(x) > c);
-      plan.push({ kind: 'lesson', week: w + 1, day: d + 1, title: `${tTitle(topic)}: ${PROBLEMS.find(p => p.slug === ps[c]).title}`, topic, class: cls, home, extra });
-    });
-    // Имтиҳони ҳафта: душвортарин масъалаи ҳар мавзӯи ҳафта
-    const topics = [...new Set(days)];
-    const exam = topics.map(t => PROBLEMS.filter(p => p.topic === t).map(p => p.slug).at(-1));
-    plan.push({ kind: 'exam', week: w + 1, day: 6, title: `Имтиҳони ҳафтаи ${w + 1}`, topic: days.at(-1), class: exam, home: [], extra: [] });
+// Курси 1-моҳа аз content/*.py → seed/course.json (220 масъала, 24 рӯз)
+//   Ҳафтаи 1: + − × / %, чоп · Ҳафтаи 2: if/else · Ҳафтаи 3: while ва тақсим · Ҳафтаи 4: for
+// Ҳар рӯзи дарс: 4 синфӣ, 3 хонагӣ, 3 иловагӣ. Имтиҳон: A (2), B (2), мураккаб (1).
+export const COURSE = JSON.parse(fs.readFileSync(new URL('./seed/course.json', import.meta.url), 'utf8'));
+export const COURSE_VERSION = '2';
+
+export function seedCourse(Q, ownerId) {
+  const hintsOf = new Map();
+  for (const d of COURSE.days) for (const id of d.ids) hintsOf.set(id, d.hints);
+  COURSE.problems.forEach((p, i) => {
+    if (Q.get('SELECT id FROM problems WHERE slug=?', p.slug)) return;
+    const r = Q.run('INSERT INTO problems (slug, owner_id, topic, position, current_version, practice_tags) VALUES (?,?,?,?,1,?)', p.slug, ownerId, p.topic, 1000 + i, '[]');
+    Q.run('INSERT INTO problem_versions (problem_id, version, data) VALUES (?,1,?)', r.lastInsertRowid, JSON.stringify(problemData({ ...p, hints: hintsOf.get(p.slug) || [] })));
   });
-  return plan;
+}
+
+export function coursePlan() {
+  return COURSE.days.map(d => d.kind === 'exam'
+    ? { kind: 'exam', week: d.week, day: d.day, title: d.title, topic: d.topic, class: d.ids.slice(0, 2), home: d.ids.slice(2, 4), extra: d.ids.slice(4) }
+    : { kind: 'lesson', week: d.week, day: d.day, title: d.title, topic: d.topic, class: d.ids.slice(0, 4), home: d.ids.slice(4, 7), extra: d.ids.slice(7) });
+}
+
+// Як дарсро аз рӯи нақша пур мекунад (маҷмӯаҳо ва қадамҳои масъала)
+export function fillLesson(Q, lessonId, p) {
+  const ids = slugs => slugs.map(sl => Q.get('SELECT id FROM problems WHERE slug=?', sl)?.id).filter(Boolean);
+  Q.run('DELETE FROM lesson_steps WHERE lesson_id=?', lessonId);
+  Q.run('UPDATE lessons SET title=?, topic=?, kind=?, homework_problem_ids=?, extra_problem_ids=? WHERE id=?',
+    p.title, p.topic, p.kind, JSON.stringify(ids(p.home)), JSON.stringify(ids(p.extra)), lessonId);
+  ids(p.class).forEach((pid, j) => Q.run("INSERT INTO lesson_steps (lesson_id, position, kind, title, problem_id) VALUES (?,?,'problem',?,?)",
+    lessonId, j + 1, p.kind === 'exam' ? 'Имтиҳон A' : 'Масъалаи синфӣ', pid));
+}
+
+// Муҳоҷират: курси навро ба базаи мавҷуда (Supabase) мегузорад. Дарсҳои оғознашуда ва пӯшида аз нав пур мешаванд.
+export function migrateCourse(Q) {
+  Q.run('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)');
+  if (Q.get("SELECT value FROM meta WHERE key='course_version'")?.value === COURSE_VERSION) return false;
+  Q.tx(() => {
+    const owner = Q.get("SELECT id FROM users WHERE role='teacher' ORDER BY id LIMIT 1")?.id ?? null;
+    seedCourse(Q, owner);
+    const plan = coursePlan();
+    for (const g of Q.all('SELECT id FROM groups')) {
+      Q.all('SELECT * FROM lessons WHERE group_id=? ORDER BY scheduled_at, number', g.id).forEach((l, i) => {
+        if (l.status === 'planned' && !l.opened) fillLesson(Q, l.id, plan[i % plan.length]);
+      });
+    }
+    Q.run("INSERT INTO meta (key, value) VALUES ('course_version', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", COURSE_VERSION);
+  });
+  return true;
 }
 
 export function createGroup(Q, { teacherId, name, startDate, lessonTime = '14:00', weekdays = '1,2,3,4,5,6', count = 24 }) {
@@ -99,13 +120,10 @@ export function createGroup(Q, { teacherId, name, startDate, lessonTime = '14:00
   const gid = Number(g.lastInsertRowid);
   const dates = lessonDates(startDate, weekdays, count);
   const plan = coursePlan();
-  const ids = slugs => slugs.map(sl => Q.get('SELECT id FROM problems WHERE slug=?', sl)?.id).filter(Boolean);
   dates.forEach((d, i) => {
     const p = plan[i % plan.length];
-    const l = Q.run('INSERT INTO lessons (group_id, number, title, topic, scheduled_at, homework_problem_ids, extra_problem_ids, kind) VALUES (?,?,?,?,?,?,?,?)',
-      gid, i + 1, p.title, p.topic, localToUtcIso(d, lessonTime), JSON.stringify(ids(p.home)), JSON.stringify(ids(p.extra)), p.kind);
-    ids(p.class).forEach((pid, j) => Q.run("INSERT INTO lesson_steps (lesson_id, position, kind, title, problem_id) VALUES (?,?,'problem',?,?)",
-      l.lastInsertRowid, j + 1, p.kind === 'exam' ? `Имтиҳон ${j + 1}` : 'Масъалаи синфӣ', pid));
+    const l = Q.run('INSERT INTO lessons (group_id, number, title, topic, scheduled_at, kind) VALUES (?,?,?,?,?,?)', gid, i + 1, p.title, p.topic, localToUtcIso(d, lessonTime), p.kind);
+    fillLesson(Q, Number(l.lastInsertRowid), p);
   });
   return gid;
 }
@@ -129,6 +147,7 @@ export function seedDemo(Q) {
     const s1 = Number(Q.run("INSERT INTO users (login, name, pass_hash, role) VALUES ('shogird','Шогирди намоишӣ',?, 'student')", pw).lastInsertRowid);
     const s2 = Number(Q.run("INSERT INTO users (login, name, pass_hash, role) VALUES ('begona','Шогирди гурӯҳи дигар',?, 'student')", pw).lastInsertRowid);
     seedProblems(Q, t);
+    seedCourse(Q, t);
     Q.run('INSERT INTO lesson_templates (owner_id, title, topic, steps) VALUES (?,?,?,?)', t, CONDITIONS_TEMPLATE.title, CONDITIONS_TEMPLATE.topic, JSON.stringify(CONDITIONS_TEMPLATE.steps));
     const start = process.env.COURSE_START || '2026-11-28';
     const g1 = createGroup(Q, { teacherId: t, name: 'C++ асосӣ — гурӯҳи 1', startDate: start });
