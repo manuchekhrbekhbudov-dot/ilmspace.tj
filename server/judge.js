@@ -36,7 +36,7 @@ export function judgeStatus() {
   if (c.driver === 'local') {
     if (!hasGpp()) return { ok: false, driver: 'local', reason: 'Дар сервер g++ ёфт нашуд.', steps: SETUP_STEPS };
     const I = isolation();
-    const full = I.unshare && I.setpriv && I.prlimit;
+    const full = I.setpriv && I.prlimit && (I.unshare || I.noFiles);
     return { ok: true, driver: 'local', isolation: I, warning: full ? undefined : 'Санҷандаи маҳаллӣ бе ҷудокунии пурра кор мекунад — танҳо барои санҷиш дар компютери худ. Барои дарси воқеӣ Judge0 пайваст кунед.' };
   }
   return { ok: false, driver: c.driver, reason: 'Санҷандаи C++ танзим нашудааст (JUDGE_DRIVER).', steps: SETUP_STEPS };
@@ -123,7 +123,7 @@ async function localCompile(code) {
   const dir = path.join(WORK, hash);
   fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
   fs.writeFileSync(path.join(dir, 'main.cpp'), code);
-  const r = await sh('g++', ['-std=c++17', '-O2', '-pipe', '-o', EXE, 'main.cpp'], { cwd: dir, timeoutMs: LIMITS.compileMs, maxOut: 1 << 20 });
+  const r = await sh('g++', ['-std=c++17', '-O2', '-pipe', ...(isolation().static ? ['-static'] : []), '-o', EXE, 'main.cpp'], { cwd: dir, timeoutMs: LIMITS.compileMs, maxOut: 1 << 20 });
   let res;
   if (r.spawnError) res = { ok: false, service: true, msg: 'g++ оғоз нашуд: ' + r.err };
   else if (r.timedOut) res = { ok: false, msg: 'Компилятсия аз 30 сония зиёд давом кард.' };
@@ -137,6 +137,17 @@ async function localCompile(code) {
 
 // Кадом воситаҳои ҷудокунӣ дар ин сервер кор мекунанд (як бор санҷида мешавад)
 let iso;
+// Оё g++ барномаи статикӣ месозад? (он гоҳ барнома ҳангоми оғоз китобхона намекушояд)
+function staticWorks() {
+  try {
+    const dir = fs.mkdtempSync(path.join(WORK, 'probe-'));
+    const out = path.join(dir, process.platform === 'win32' ? 'p.exe' : 'p');
+    const c = spawnSync('g++', ['-std=c++17', '-static', '-x', 'c++', '-', '-o', out], { input: '#include <iostream>\nint main(){std::cout<<42;}', timeout: 60000 });
+    const ok = c.status === 0 && spawnSync(out, [], { timeout: 5000 }).stdout?.toString() === '42';
+    fs.rmSync(dir, { recursive: true, force: true });
+    return ok;
+  } catch { return false; }
+}
 export function isolation() {
   if (iso) return iso;
   const ok = (cmd, args) => { try { return spawnSync(cmd, args, { stdio: 'ignore', timeout: 3000 }).status === 0; } catch { return false; } };
@@ -144,7 +155,10 @@ export function isolation() {
     unshare: process.platform === 'linux' && ok('unshare', ['-n', 'true']),
     setpriv: process.platform === 'linux' && ok('setpriv', ['--reuid=65534', '--regid=65534', '--clear-groups', '--', 'true']),
     prlimit: process.platform === 'linux' && ok('prlimit', ['--cpu=1', 'true']),
+    static: staticWorks(),
   };
+  // Бе дескрипторҳои нав (RLIMIT_NOFILE=3): барнома файл ва пайвасти шабака кушода наметавонад
+  iso.noFiles = iso.static && iso.prlimit;
   return iso;
 }
 async function localRun(dir, stdin, lim) {
@@ -153,7 +167,7 @@ async function localRun(dir, stdin, lim) {
   const cmd = [];
   if (I.unshare) cmd.push('unshare', '-n');                                   // бе шабака
   if (I.setpriv) cmd.push('setpriv', '--reuid=65534', '--regid=65534', '--clear-groups', '--'); // корбари бе ҳуқуқ
-  if (I.prlimit) cmd.push('prlimit', `--as=${lim.memoryMb * 1024 * 1024}`, `--cpu=${cpuSec}`, `--fsize=${1 << 20}`, '--nproc=64', `--stack=${64 * 1024 * 1024}`);
+  if (I.prlimit) cmd.push('prlimit', `--as=${lim.memoryMb * 1024 * 1024}`, `--cpu=${cpuSec}`, `--fsize=${1 << 20}`, '--nproc=64', `--stack=${64 * 1024 * 1024}`, ...(I.noFiles ? ['--nofile=3'] : []));
   cmd.push(path.join(dir, EXE));
   const r = await sh(cmd[0], cmd.slice(1), { input: stdin, timeoutMs: lim.timeMs * 2 + 500, maxOut: lim.outputBytes, cwd: dir });
   if (r.spawnError) return { status: 'SE', detail: r.err };

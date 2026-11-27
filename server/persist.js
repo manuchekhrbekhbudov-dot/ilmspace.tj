@@ -17,37 +17,44 @@ const state = { mode: 'local', lastSaved: null, lastError: null, bytes: 0, retry
 
 export function persistStatus() { return { ...state, connection: connectionInfo() }; }
 
+const clean = v => String(v ?? '').trim().replace(/^["'«]+|["'»]+$/g, '').trim();
+const PLACEHOLDER = /\[YOUR[-_ ]PASSWORD\]/i;
+
 /** Маълумоти ташхис бе сирр: парол аз куҷо гирифта мешавад ва кадом пайваст аст. */
 export function connectionInfo(env = process.env) {
-  const raw = String(env.DATABASE_URL || '').trim().replace(/^["'«]+|["'»]+$/g, '').trim();
+  const raw = clean(env.DATABASE_URL);
   if (!raw) return null;
-  try {
-    const u = new URL(raw.replace(/^postgres(ql)?:/i, 'http:').replace(/\[YOUR[-_ ]PASSWORD\]/gi, 'PLACEHOLDER'));
-    const placeholder = /\[YOUR[-_ ]PASSWORD\]/i.test(raw);
-    return {
-      passwordFrom: placeholder ? 'DATABASE_PASSWORD' : (u.password ? 'DATABASE_URL (пароли дохили силка)' : 'нест'),
-      databasePasswordSet: !!String(env.DATABASE_PASSWORD || '').trim(),
-      ignoredDatabasePassword: !placeholder && !!u.password && !!String(env.DATABASE_PASSWORD || '').trim(),
-      pooler: /pooler\.supabase\.com$/i.test(u.hostname) ? (u.port === '6543' ? 'transaction' : 'session') : (/supabase\.co$/i.test(u.hostname) ? 'direct' : 'other'),
-      port: u.port || '5432',
-    };
-  } catch { return { parse: 'error' }; }
+  const pwSet = !!clean(env.DATABASE_PASSWORD);
+  const { url } = databaseUrl(env);
+  let host = '', port = '5432';
+  try { const u = new URL(url.replace(/^postgres(ql)?:/i, 'http:')); host = u.hostname; port = u.port || '5432'; } catch {}
+  return {
+    passwordFrom: pwSet ? 'DATABASE_PASSWORD' : (PLACEHOLDER.test(raw) ? 'нест' : 'DATABASE_URL (пароли дохили силка)'),
+    databasePasswordSet: pwSet,
+    pooler: /pooler\.supabase\.com$/i.test(host) ? (port === '6543' ? 'transaction' : 'session') : (/supabase\.co$/i.test(host) ? 'direct' : 'other'),
+    port,
+  };
 }
 
-/** Силкаи пайвастро аз танзимот месозад. Хатои маъмулиро бо забони фаҳмо мегӯяд. */
+/** Силкаи пайвастро аз танзимот месозад. DATABASE_PASSWORD (агар бошад) ҳамеша истифода мешавад. */
 export function databaseUrl(env = process.env) {
-  const clean = v => String(v ?? '').trim().replace(/^["'«]+|["'»]+$/g, '').trim();
-  let url = clean(env.DATABASE_URL);
+  const url = clean(env.DATABASE_URL);
   const pw = clean(env.DATABASE_PASSWORD);
   if (!url) return { url: '' };
   if (!/^postgres(ql)?:\/\//i.test(url)) {
     return { url, error: 'DATABASE_URL бояд бо postgresql:// оғоз шавад (силкаи база аз Supabase), на силкаи сайт.' };
   }
-  if (/\[YOUR[-_ ]PASSWORD\]/i.test(url)) {
-    if (!pw) return { url, error: 'Дар DATABASE_URL ҳанӯз [YOUR-PASSWORD] ҳаст. Пароли базаро дар DATABASE_PASSWORD гузоред.' };
-    url = url.replace(/\[YOUR[-_ ]PASSWORD\]/gi, encodeURIComponent(pw));
-  }
-  return { url };
+  const [, scheme, rest] = url.match(/^(postgres(?:ql)?:\/\/)(.*)$/i);
+  const at = rest.lastIndexOf('@');
+  if (at < 0) return { url };
+  const userinfo = rest.slice(0, at), hostpart = rest.slice(at + 1);
+  const colon = userinfo.indexOf(':');
+  const user = colon < 0 ? userinfo : userinfo.slice(0, colon);
+  let pass = colon < 0 ? '' : userinfo.slice(colon + 1);
+  if (pw) pass = encodeURIComponent(pw);
+  else if (PLACEHOLDER.test(pass)) return { url, error: 'Пароли база намерасад: дар Render тағйирёбандаи DATABASE_PASSWORD-ро бо пароли базаи Supabase илова кунед.' };
+  else if (pass && !/%[0-9a-f]{2}/i.test(pass)) pass = encodeURIComponent(pass);
+  return { url: scheme + user + (pass ? ':' + pass : '') + '@' + hostpart };
 }
 
 async function connect() {
@@ -100,7 +107,9 @@ export async function restore(dbFile) {
 
 function friendly(e) {
   const m = String(e?.message || e);
-  if (/password authentication failed/i.test(m)) return 'Пароли база нодуруст аст (DATABASE_PASSWORD). Дар Supabase паролро нав кунед ва ҳамонро гузоред.';
+  if (/password authentication failed/i.test(m)) return clean(process.env.DATABASE_PASSWORD)
+    ? 'Пароли DATABASE_PASSWORD бо пароли базаи Supabase мувофиқ нест. Дар Supabase «Reset database password» кунед ва ҳамон паролро дар DATABASE_PASSWORD гузоред.'
+    : 'Пароли дохили DATABASE_URL нодуруст аст. Осонтар: дар Render тағйирёбандаи DATABASE_PASSWORD-ро бо пароли нави база илова кунед — силкаро иваз кардан лозим нест.';
   if (/ENOTFOUND|getaddrinfo/i.test(m)) return 'Суроғаи база ёфт нашуд. Силкаи «Session pooler»-ро аз Supabase нусха бардоред.';
   if (/ENETUNREACH|EHOSTUNREACH/i.test(m)) return 'Ба база роҳ нест. Дар Supabase «Session pooler»-ро интихоб кунед, на «Direct connection».';
   if (/timeout/i.test(m)) return 'База ҷавоб надод (вақт гузашт). Баъдтар боз кӯшиш мешавад.';
