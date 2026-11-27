@@ -212,6 +212,10 @@ export function openDb(file) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
   db.exec(SCHEMA);
+  // Муҳоҷират: сохтори «ҳафта → рӯз → маҷмӯаҳо»
+  const cols = db.prepare('PRAGMA table_info(lessons)').all().map(c => c.name);
+  if (!cols.includes('kind')) db.exec("ALTER TABLE lessons ADD COLUMN kind TEXT NOT NULL DEFAULT 'lesson'");
+  if (!cols.includes('extra_problem_ids')) db.exec("ALTER TABLE lessons ADD COLUMN extra_problem_ids TEXT NOT NULL DEFAULT '[]'");
   return db;
 }
 

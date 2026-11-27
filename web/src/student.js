@@ -27,6 +27,7 @@ export function StudentHome({ user }) {
           <div class="muted">${L.steps.length} қадам${L.currentStep ? ` · ту дар қадами ${L.currentStep} — «${L.steps[L.currentStep - 1].title}»` : L.steps.length ? ' · ҳамаи қадамҳо иҷро шуданд' : ''}</div>
           <div style="margin-top:16px"><a class="btn p lg" href=${'#/lesson/' + L.id}>${L.status === 'live' ? (L.currentStep > 1 ? 'Идома деҳ' : 'Оғоз кун') : 'Кушо'}</a></div>
         </div>` : html`<div class="card"><div class="kicker">Дарси имрӯз</div><p style="margin-top:6px">Имрӯз дарс нест. Аз ҷои охирин идома деҳ ё машқ кун.</p></div>`}
+        <a class="card setcard" href="#/course"><div class="row"><span class="seticon">▦</span><div style="flex:1"><b>Нақшаи курс</b><div class="muted small">Ҳафтаҳо, рӯзҳо ва вазифаҳои синфӣ, хонагӣ ва иловагӣ</div></div><span>→</span></div></a>
         <div class="card">
           <div class="kicker">Аз ҷои охирин идома деҳ</div>
           ${C ? html`<div class="row" style="margin-top:6px"><b>${C.title}</b><span class="muted small">${C.topic} · ${C.last ? `кӯшиши №${C.last.number}${C.last.verdict ? ' — ' + (C.last.verdict === 'AC' ? 'дуруст' : 'нодуруст') : ''}` : 'ҳанӯз фиристода нашуд'}</span><div class="spacer"></div><a class="btn" href=${'#/p/' + C.problem_id}>Идома деҳ</a></div>`

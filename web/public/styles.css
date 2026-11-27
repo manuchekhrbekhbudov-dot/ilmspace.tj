@@ -242,3 +242,38 @@ a.num, button.num { font-weight: 800; color: var(--acc); background: none; borde
   h1 { font-size: 21px; }
 }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* Нақшаи курс */
+.days { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.day { display: flex; flex-direction: column; gap: 10px; text-align: left; cursor: pointer; color: var(--text); font: inherit; transition: border-color var(--t), transform var(--t); }
+.day:hover { border-color: var(--acc); }
+.day.locked { opacity: .6; }
+.day .daytitle { color: var(--muted); min-height: 2.6em; }
+.daynum { width: 38px; height: 38px; flex: none; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 17px; background: var(--acc-soft); color: var(--acc); }
+.daynum.exam { background: var(--warn-bg); color: var(--warn); }
+.setcard { display: block; color: var(--text); }
+.setcard:hover { border-color: var(--acc); text-decoration: none; }
+.seticon { width: 34px; height: 34px; border-radius: 9px; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; background: var(--acc-soft); color: var(--acc); }
+.seticon.home { background: var(--info-bg); color: var(--info); }
+.seticon.extra { background: var(--warn-bg); color: var(--warn); }
+.setlay { display: grid; grid-template-columns: 250px minmax(0, 1fr); height: calc(100vh - 53px); }
+.setlay .ws { height: 100%; }
+.setside { border-right: 1px solid var(--line); padding: 14px; overflow: auto; display: flex; flex-direction: column; gap: 10px; background: var(--panel); }
+.setlist { display: flex; flex-direction: column; gap: 6px; }
+.setitem { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line); color: var(--text); font-weight: 600; font-size: 14px; }
+.setitem:hover { text-decoration: none; border-color: var(--acc); }
+.setitem.on { background: var(--acc-soft); border-color: var(--acc); }
+.setitem .n { width: 22px; height: 22px; border-radius: 6px; background: var(--panel3); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; flex: none; }
+.setitem .t { flex: 1; min-width: 0; }
+.setitem .ok { color: var(--ok); font-weight: 800; }
+@media (max-width: 1100px) { .days { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 760px) {
+  .days { grid-template-columns: 1fr; }
+  .setlay { display: flex; flex-direction: column; height: calc(100dvh - 53px); }
+  .setside { border-right: 0; border-bottom: 1px solid var(--line); padding: 8px 10px; gap: 6px; flex: none; }
+  .setside .card, .setside .kicker, .setside .setlesson { display: none; }
+  .setlist { flex-direction: row; overflow-x: auto; }
+  .setitem { flex: none; padding: 6px 9px; }
+  .setitem .t { white-space: nowrap; }
+  .setlay .ws { height: auto; flex: 1; min-height: 0; }
+}

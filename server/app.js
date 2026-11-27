@@ -508,6 +508,76 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     return { lesson: { id: l.id, title: l.title }, content };
   });
 
+  // ───── Нақшаи курс: ҳафта → рӯз → маҷмӯаҳо (синфӣ, хонагӣ, иловагӣ) ─────
+  const isLocked = (u, l) => u.role !== 'teacher' && l.status !== 'live' && l.status !== 'finished' && dushanbeDate(l.scheduled_at) > dushanbeDate();
+  function lessonSets(l) {
+    const cls = Q.all("SELECT problem_id FROM lesson_steps WHERE lesson_id=? AND kind='problem' AND skipped=0 AND problem_id IS NOT NULL ORDER BY position", l.id).map(r => r.problem_id);
+    return { class: [...new Set(cls)], home: J(l.homework_problem_ids) || [], extra: J(l.extra_problem_ids) || [] };
+  }
+  const titleOf = pid => { try { return publicProblem(pid).title; } catch { return '—'; } };
+  function courseFor(u, gid) {
+    const g = Q.get('SELECT * FROM groups WHERE id=?', gid);
+    if (!g) throw notFound('Гурӯҳ ёфт нашуд.');
+    if (u.role === 'teacher' ? !ownsGroup(u, gid) : !isMember(u.id, gid)) throw forbidden('Шумо дар ин гурӯҳ нестед.');
+    const today = dushanbeDate();
+    const solved = u.role === 'student' ? solvedSet(u.id) : null;
+    const uids = u.role === 'teacher' ? members(gid).map(m => m.id) : [];
+    const solvedBy = u.role === 'teacher' ? new Map(uids.map(id => [id, solvedSet(id)])) : null;
+    const ls = Q.all('SELECT * FROM lessons WHERE group_id=? ORDER BY scheduled_at, number', gid);
+    let w = 0, d = 0;
+    const days = ls.map(l => {
+      if (d === 0 || d === 6) { w++; d = 0; } d++;
+      const sets = lessonSets(l);
+      const count = ids => u.role === 'student'
+        ? { total: ids.length, solved: ids.filter(id => solved.has(id)).length }
+        : { total: ids.length, complete: uids.filter(id => ids.length && ids.every(p => solvedBy.get(id).has(p))).length, students: uids.length };
+      const date = dushanbeDate(l.scheduled_at);
+      const locked = isLocked(u, l);
+      const all = [...sets.class, ...sets.home, ...sets.extra];
+      const state = l.status === 'live' ? 'live' : date === today ? 'today' : locked ? 'locked'
+        : (u.role === 'student' && all.length && all.every(id => solved.has(id))) || (u.role === 'teacher' && l.status === 'finished') ? 'done'
+        : date < today ? 'progress' : 'planned';
+      return { id: l.id, number: l.number, week: w, day: d, kind: l.kind, title: l.title, topic: l.topic, scheduled_at: l.scheduled_at, status: l.status, state, locked,
+        sets: { class: count(sets.class), home: count(sets.home), extra: count(sets.extra) } };
+    });
+    const weeks = [];
+    for (const x of days) { if (!weeks[x.week - 1]) weeks[x.week - 1] = { week: x.week, days: [] }; weeks[x.week - 1].days.push(x); }
+    return { group: { id: g.id, name: g.name, lesson_time: g.lesson_time }, weeks, role: u.role };
+  }
+  R('GET', '/api/groups/:id/course', ({ user, params }) => courseFor(need(user), Number(params.id)));
+  R('GET', '/api/course', ({ user }) => {
+    need(user, 'student');
+    const g = Q.get("SELECT group_id FROM group_members WHERE user_id=? AND status='active' ORDER BY created_at LIMIT 1", user.id);
+    if (!g) throw notFound('Шумо ҳанӯз дар гурӯҳ нестед. Аз саҳифаи асосӣ ба гурӯҳ ҳамроҳ шавед.');
+    return courseFor(user, g.group_id);
+  });
+  R('GET', '/api/lessons/:id/sets', ({ user, params }) => {
+    need(user); const l = lessonFor(user, Number(params.id));
+    if (isLocked(user, l)) throw forbidden('Ин рӯз ҳанӯз кушода нашудааст.');
+    const sets = lessonSets(l);
+    const solved = user.role === 'student' ? solvedSet(user.id) : new Set();
+    const mk = ids => ids.map(pid => ({ id: pid, title: titleOf(pid), solved: solved.has(pid) }));
+    return { lesson: { id: l.id, number: l.number, title: l.title, kind: l.kind, status: l.status, group_id: l.group_id, scheduled_at: l.scheduled_at },
+      sets: { class: mk(sets.class), home: mk(sets.home), extra: mk(sets.extra) } };
+  });
+  R('PUT', '/api/lessons/:id/sets', ({ user, params, body }) => {
+    need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
+    const valid = a => (Array.isArray(a) ? a : []).map(Number).filter(id => Q.get('SELECT 1 FROM problems WHERE id=? AND current_version>0', id));
+    Q.tx(() => {
+      if (body.class) {
+        const want = valid(body.class);
+        const cur = Q.all("SELECT id, problem_id FROM lesson_steps WHERE lesson_id=? AND kind='problem'", l.id);
+        for (const st of cur) if (!want.includes(st.problem_id)) Q.run('DELETE FROM lesson_steps WHERE id=?', st.id);
+        let pos = Q.get('SELECT COALESCE(MAX(position),0) m FROM lesson_steps WHERE lesson_id=?', l.id).m;
+        for (const pid of want) if (!cur.some(c => c.problem_id === pid))
+          Q.run("INSERT INTO lesson_steps (lesson_id, position, kind, title, problem_id) VALUES (?,?,'problem',?,?)", l.id, ++pos, l.kind === 'exam' ? 'Имтиҳон' : 'Масъалаи синфӣ', pid);
+      }
+      if (body.home) Q.run('UPDATE lessons SET homework_problem_ids=? WHERE id=?', JSON.stringify(valid(body.home)), l.id);
+      if (body.extra) Q.run('UPDATE lessons SET extra_problem_ids=? WHERE id=?', JSON.stringify(valid(body.extra)), l.id);
+    });
+    lessonEvent(l); return { ok: true };
+  });
+
   // Қолабҳои дарс
   R('GET', '/api/templates', ({ user }) => { need(user, 'teacher'); return Q.all('SELECT * FROM lesson_templates WHERE owner_id=? OR owner_id IS NULL ORDER BY id', user.id).map(t => ({ ...t, steps: J(t.steps) })); });
   R('GET', '/api/templates/:id', ({ user, params }) => { need(user, 'teacher'); const t = Q.get('SELECT * FROM lesson_templates WHERE id=? AND owner_id=?', Number(params.id), user.id); if (!t) throw notFound(); return { ...t, steps: J(t.steps) }; });

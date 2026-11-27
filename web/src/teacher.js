@@ -1,6 +1,7 @@
 // Саҳифаҳои устод: гурӯҳҳо, қолабҳо, ҳисобот, вазифаҳо
 import { html, useState, useEffect, api, useLoad, useEvents, Loading, ErrorBox, Empty, Modal, fTime, fDate, fDateTime, fWeekday, dushanbeToday, dushanbeDateOf, TOPIC, TOPIC_KEYS, Verdict, toast, CodeView } from './lib.js';
 import { AsgState } from './student.js';
+import { CourseMap } from './course.js';
 
 export function TeacherHome() {
   const [{ data, loading, error }, reload] = useLoad(() => Promise.all([api('/api/groups'), api('/api/templates')]));
@@ -77,7 +78,7 @@ function GroupForm({ onClose, onDone }) {
 
 export function GroupPage({ id, tab: tab0 }) {
   const [{ data, loading, error }, reload] = useLoad(() => Promise.all([api(`/api/groups/${id}`), api('/api/templates'), api('/api/problems')]), [id]);
-  const [tab, setTab] = useState(tab0 || 'lessons');
+  const [tab, setTab] = useState(tab0 || 'course');
   useEvents(ev => { if (['members', 'assignment', 'activity'].includes(ev.type) && Number(ev.group_id) === Number(id)) reload(true); }, [id]);
   if (loading) return html`<${Loading} />`;
   if (error && !data) return html`<div class="page"><${ErrorBox} error=${error} retry=${reload} /></div>`;
@@ -87,8 +88,9 @@ export function GroupPage({ id, tab: tab0 }) {
     <a href="#/" class="small">← Гурӯҳҳо</a>
     <div class="row" style="margin:6px 0 14px"><h1>${g.group.name}</h1><span class="chip">Рамзи даъват: <b class="mono">${g.group.invite_code}</b></span></div>
     <div class="tabs" style="margin:0 0 16px;position:static;padding:0">
-      ${[['lessons', `Дарсҳо (${g.lessons.length})`], ['students', `Шогирдон (${g.members.filter(m => m.status === 'active').length})${pending.length ? ` · ${pending.length} нав` : ''}`], ['homework', `Вазифаҳо (${g.assignments.length})`]].map(([k, t]) => html`<button class=${tab === k ? 'on' : ''} onClick=${() => setTab(k)}>${t}</button>`)}
+      ${[['course', 'Нақшаи курс'], ['lessons', `Ҷадвали дарсҳо (${g.lessons.length})`], ['students', `Шогирдон (${g.members.filter(m => m.status === 'active').length})${pending.length ? ` · ${pending.length} нав` : ''}`], ['homework', `Вазифаҳо (${g.assignments.length})`]].map(([k, t]) => html`<button class=${tab === k ? 'on' : ''} onClick=${() => setTab(k)}>${t}</button>`)}
     </div>
+    ${tab === 'course' && html`<${CourseMap} gid=${Number(id)} embedded />`}
     ${tab === 'lessons' && html`<${LessonsTab} g=${g} templates=${templates} reload=${reload} />`}
     ${tab === 'students' && html`<${StudentsTab} g=${g} reload=${reload} />`}
     ${tab === 'homework' && html`<${HomeworkTab} g=${g} problems=${problems} reload=${reload} />`}
