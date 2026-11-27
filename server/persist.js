@@ -18,13 +18,20 @@ const state = { mode: 'local', lastSaved: null, lastError: null, bytes: 0, retry
 export function persistStatus() { return { ...state, connection: connectionInfo() }; }
 
 const clean = v => String(v ?? '').trim().replace(/^["'«]+|["'»]+$/g, '').trim();
-const PLACEHOLDER = /\[YOUR[-_ ]PASSWORD\]/i;
+// Агар силка ва парол ҷояшонро иваз карда бошанд (силка дар DATABASE_PASSWORD) — худамон ислоҳ мекунем
+function vars(env) {
+  let url = clean(env.DATABASE_URL), pw = clean(env.DATABASE_PASSWORD);
+  const isUrl = v => /^postgres(ql)?:\/\//i.test(v);
+  if (isUrl(pw) && !isUrl(url)) [url, pw] = [pw, isUrl(url) ? '' : url];
+  return { url, pw };
+}
+const PLACEHOLDER = /\[YOUR[-_ ](?:DATABASE[-_ ])?PASSWORD\]/i;
 
 /** Маълумоти ташхис бе сирр: парол аз куҷо гирифта мешавад ва кадом пайваст аст. */
 export function connectionInfo(env = process.env) {
-  const raw = clean(env.DATABASE_URL);
+  const { url: raw, pw: rawPw } = vars(env);
   if (!raw) return null;
-  const pwSet = !!clean(env.DATABASE_PASSWORD);
+  const pwSet = !!rawPw;
   const { url } = databaseUrl(env);
   let host = '', port = '5432';
   try { const u = new URL(url.replace(/^postgres(ql)?:/i, 'http:')); host = u.hostname; port = u.port || '5432'; } catch {}
@@ -38,8 +45,7 @@ export function connectionInfo(env = process.env) {
 
 /** Силкаи пайвастро аз танзимот месозад. DATABASE_PASSWORD (агар бошад) ҳамеша истифода мешавад. */
 export function databaseUrl(env = process.env) {
-  const url = clean(env.DATABASE_URL);
-  const pw = clean(env.DATABASE_PASSWORD);
+  const { url, pw } = vars(env);
   if (!url) return { url: '' };
   if (!/^postgres(ql)?:\/\//i.test(url)) {
     return { url, error: 'DATABASE_URL бояд бо postgresql:// оғоз шавад (силкаи база аз Supabase), на силкаи сайт.' };
@@ -107,7 +113,7 @@ export async function restore(dbFile) {
 
 function friendly(e) {
   const m = String(e?.message || e);
-  if (/password authentication failed/i.test(m)) return clean(process.env.DATABASE_PASSWORD)
+  if (/password authentication failed/i.test(m)) return vars(process.env).pw
     ? 'Пароли DATABASE_PASSWORD бо пароли базаи Supabase мувофиқ нест. Дар Supabase «Reset database password» кунед ва ҳамон паролро дар DATABASE_PASSWORD гузоред.'
     : 'Пароли дохили DATABASE_URL нодуруст аст. Осонтар: дар Render тағйирёбандаи DATABASE_PASSWORD-ро бо пароли нави база илова кунед — силкаро иваз кардан лозим нест.';
   if (/ENOTFOUND|getaddrinfo/i.test(m)) return 'Суроғаи база ёфт нашуд. Силкаи «Session pooler»-ро аз Supabase нусха бардоред.';
