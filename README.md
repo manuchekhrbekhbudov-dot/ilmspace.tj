@@ -17,8 +17,14 @@ git clone https://github.com/manuchekhrbekhbudov-dot/ilmspace.tj.git
 ```
 
 ```bash
-cd ilmspace.tj && npm install
+cd ilmspace.tj
 ```
+
+```bash
+npm install
+```
+
+> **Windows (PowerShell):** фармонҳоро як-як иҷро кунед — PowerShell 5 аломати `&&`-ро намефаҳмад. Барои санҷандаи маҳаллӣ g++ лозим аст: `winget install BrechtSanders.WinLibs.POSIX.UCRT`, баъд терминалро аз нав кушоед ва `g++ --version`-ро санҷед. Дар Windows барномаи шогирд бе ҷудокунӣ иҷро мешавад — барои санҷиш дар компютери худ кифоя, барои синф Judge0.
 
 ```bash
 npm start

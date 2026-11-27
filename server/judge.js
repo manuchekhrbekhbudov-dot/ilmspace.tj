@@ -52,7 +52,7 @@ const SETUP_STEPS = [
 let gppCache;
 function hasGpp() {
   if (gppCache !== undefined) return gppCache;
-  try { gppCache = fs.existsSync('/usr/bin/g++') || fs.existsSync('/usr/local/bin/g++'); } catch { gppCache = false; }
+  try { gppCache = spawnSync('g++', ['--version'], { stdio: 'ignore', timeout: 10000 }).status === 0; } catch { gppCache = false; }
   return gppCache;
 }
 
@@ -86,6 +86,7 @@ export function queueDepth() { return waiting.length; }
 
 // ---------- Драйвери маҳаллӣ ----------
 const WORK = path.join(os.tmpdir(), 'codelab-judge');
+const EXE = process.platform === 'win32' ? 'prog.exe' : 'prog';
 fs.mkdirSync(WORK, { recursive: true, mode: 0o755 });
 
 function sh(cmd, args, { input = '', timeoutMs, maxOut = LIMITS.outputBytes, cwd } = {}) {
@@ -114,17 +115,17 @@ async function localCompile(code) {
   const hash = crypto.createHash('sha256').update(code).digest('hex').slice(0, 24);
   if (compiled.has(hash)) {
     const c = compiled.get(hash);
-    if (!c.ok || fs.existsSync(path.join(c.dir, 'prog'))) return c;
+    if (!c.ok || fs.existsSync(path.join(c.dir, EXE))) return c;
   }
   const dir = path.join(WORK, hash);
   fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
   fs.writeFileSync(path.join(dir, 'main.cpp'), code);
-  const r = await sh('g++', ['-std=c++17', '-O2', '-pipe', '-o', 'prog', 'main.cpp'], { cwd: dir, timeoutMs: LIMITS.compileMs, maxOut: 1 << 20 });
+  const r = await sh('g++', ['-std=c++17', '-O2', '-pipe', '-o', EXE, 'main.cpp'], { cwd: dir, timeoutMs: LIMITS.compileMs, maxOut: 1 << 20 });
   let res;
   if (r.spawnError) res = { ok: false, service: true, msg: 'g++ оғоз нашуд: ' + r.err };
   else if (r.timedOut) res = { ok: false, msg: 'Компилятсия аз 30 сония зиёд давом кард.' };
-  else if (r.code !== 0) res = { ok: false, msg: r.err.replaceAll(dir + '/', '').slice(0, 20000) };
-  else { fs.chmodSync(path.join(dir, 'prog'), 0o755); res = { ok: true, dir }; }
+  else if (r.code !== 0) res = { ok: false, msg: r.err.replaceAll(dir + path.sep, '').replaceAll(dir + '/', '').slice(0, 20000) };
+  else { try { fs.chmodSync(path.join(dir, EXE), 0o755); } catch {} res = { ok: true, dir }; }
   res.dir = dir;
   compiled.set(hash, res);
   if (compiled.size > 300) { const k = compiled.keys().next().value; const v = compiled.get(k); compiled.delete(k); fs.rm(v.dir, { recursive: true, force: true }, () => {}); }
@@ -150,8 +151,8 @@ async function localRun(dir, stdin, lim) {
   if (I.unshare) cmd.push('unshare', '-n');                                   // бе шабака
   if (I.setpriv) cmd.push('setpriv', '--reuid=65534', '--regid=65534', '--clear-groups', '--'); // корбари бе ҳуқуқ
   if (I.prlimit) cmd.push('prlimit', `--as=${lim.memoryMb * 1024 * 1024}`, `--cpu=${cpuSec}`, `--fsize=${1 << 20}`, '--nproc=64', `--stack=${64 * 1024 * 1024}`);
-  cmd.push(path.join(dir, 'prog'));
-  const r = await sh(cmd[0], cmd.slice(1), { input: stdin, timeoutMs: lim.timeMs * 2 + 500, maxOut: lim.outputBytes, cwd: '/' });
+  cmd.push(path.join(dir, EXE));
+  const r = await sh(cmd[0], cmd.slice(1), { input: stdin, timeoutMs: lim.timeMs * 2 + 500, maxOut: lim.outputBytes, cwd: dir });
   if (r.spawnError) return { status: 'SE', detail: r.err };
   if (r.overflow) return { status: 'OLE', stdout: r.out, ms: r.ms };
   if (r.timedOut || r.signal === 'SIGXCPU' || (r.signal === 'SIGKILL' && r.ms >= lim.timeMs * 0.8) || r.ms > lim.timeMs * 1.5 + 300) return { status: 'TLE', stdout: r.out, ms: r.ms };

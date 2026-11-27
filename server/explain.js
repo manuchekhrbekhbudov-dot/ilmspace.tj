@@ -26,7 +26,7 @@ const RULES = [
 export function explainCompile(msg) {
   const out = [];
   if (!msg) return out;
-  const re = /^(?:[^\s:]*main\.cpp):(\d+):(\d+):\s+(error|fatal error):\s+(.*)$/gm;
+  const re = /^(?:.*?main\.cpp):(\d+):(\d+):\s+(error|fatal error):\s+(.*)$/gm;
   let m;
   while ((m = re.exec(msg)) && out.length < 6) {
     const text = m[4];
