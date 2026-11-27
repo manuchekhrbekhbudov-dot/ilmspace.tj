@@ -337,6 +337,22 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   });
   R('POST', '/api/logout', ({ sid }) => { Q.run('DELETE FROM sessions WHERE token=?', sid || ''); return { cookie: '' }; });
   R('GET', '/api/me', ({ user }) => ({ user: user || null, judge: judgeStatus() }));
+  // Профил: ном, логин ва паролро худи корбар иваз мекунад (пароли ҷорӣ лозим аст)
+  R('PUT', '/api/me', ({ user, body, sid }) => {
+    need(user);
+    const row = Q.get('SELECT * FROM users WHERE id=?', user.id);
+    if (!checkPassword(String(body.current_password || ''), row.pass_hash)) throw bad('Пароли ҷорӣ нодуруст аст.');
+    const name = String(body.name ?? row.name).trim();
+    const login = String(body.login ?? row.login).trim().toLowerCase();
+    const pw = String(body.new_password || '');
+    if (name.length < 2) throw bad('Ном ва насабро нависед.');
+    if (login.length < 3 || login.length > 32 || /\s/.test(login)) throw bad('Логин бояд аз 3 то 32 аломат бошад ва фосила надошта бошад.');
+    if (login !== row.login && Q.get('SELECT 1 FROM users WHERE login=?', login)) throw bad('Ин логин аллакай банд аст.');
+    if (pw && pw.length < 8) throw bad('Пароли нав бояд ҳадди ақал 8 аломат бошад.');
+    Q.run('UPDATE users SET name=?, login=?, pass_hash=? WHERE id=?', name, login, pw ? hashPassword(pw) : row.pass_hash, row.id);
+    if (pw) Q.run('DELETE FROM sessions WHERE user_id=? AND token!=?', row.id, sid || '');
+    return { user: { id: row.id, login, name, role: row.role } };
+  });
   R('GET', '/api/judge/status', () => ({ ...judgeStatus(), queue: queueDepth() }));
 
   // Шогирд: гурӯҳ

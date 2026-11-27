@@ -35,7 +35,7 @@ function Header({ user, hash, onLogout, judge }) {
     ${user.role === 'teacher' && judge && !judge.ok && html`<span class="net" title=${judge.reason}>Санҷанда танзим нашудааст</span>`}
     ${user.role === 'teacher' && judge?.ok && judge.warning && html`<span class="net" title=${judge.warning}>Санҷандаи маҳаллӣ бе ҷудокунӣ</span>`}
     <button class="btn ghost icon-btn" onClick=${toggleTheme} title="Мавзӯи торик/равшан" aria-label="Мавзӯи торик/равшан">◐</button>
-    <span class="muted small uname" style="white-space:nowrap">${user.name}${user.role === 'teacher' ? ' · устод' : ''}</span>
+    <a class="btn ghost sm" href="#/profile" title="Ном, логин ва парол">👤 <span class="uname">${user.name}${user.role === 'teacher' ? ' · устод' : ''}</span></a>
     <button class="btn ghost sm" onClick=${onLogout}>Баромад</button>
   </header>`;
 }
@@ -74,6 +74,33 @@ function Auth({ onAuth }) {
   </div>`;
 }
 
+function Profile({ me, onSaved }) {
+  const [f, setF] = useState({ name: me.name, login: me.login, new_password: '', current_password: '' });
+  const [msg, setMsg] = useState(null); const [err, setErr] = useState(null); const [busy, setBusy] = useState(false);
+  const demo = me.login === 'ustod' || me.login === 'shogird' || me.login === 'begona';
+  const save = async e => {
+    e.preventDefault(); setErr(null); setMsg(null);
+    if (!f.current_password) return setErr('Пароли ҳозираро нависед.');
+    setBusy(true);
+    try { const r = await api('/api/me', { method: 'PUT', body: f }); onSaved(r.user); setF({ ...f, new_password: '', current_password: '' }); setMsg(`Захира шуд. Акнун бо логини «${r.user.login}» ворид мешавед.`); }
+    catch (x) { setErr(x.message); } finally { setBusy(false); }
+  };
+  return html`<div class="page" style="max-width:560px">
+    <h1 style="margin-bottom:12px">Ҳисоби ман</h1>
+    ${demo && html`<div class="notice warn" style="margin-bottom:14px">Ин ҳисоби намоишӣ аст ва пароли онро ҳама медонанд. Логин ва паролро ба худатон иваз кунед — гурӯҳҳо ва дарсҳо ҳамроҳи ҳисоб мемонанд.</div>`}
+    <form class="col card" onSubmit=${save} noValidate>
+      <label class="f">Ном ва насаб<input class="i" value=${f.name} onInput=${e => setF({ ...f, name: e.target.value })} /></label>
+      <label class="f">Логини нав<input class="i mono" autocapitalize="off" value=${f.login} onInput=${e => setF({ ...f, login: e.target.value })} /></label>
+      <label class="f">Пароли нав (ҳадди ақал 8 аломат; холӣ монад — парол иваз намешавад)<input class="i" type="password" autocomplete="new-password" value=${f.new_password} onInput=${e => setF({ ...f, new_password: e.target.value })} /></label>
+      <div class="sep"></div>
+      <label class="f">Пароли ҳозира (барои тасдиқ)<input class="i" type="password" autocomplete="current-password" value=${f.current_password} onInput=${e => setF({ ...f, current_password: e.target.value })} /></label>
+      ${err && html`<div class="err" role="alert">${err}</div>`}
+      ${msg && html`<div class="notice ok" role="status">${msg}</div>`}
+      <div><button class="btn p lg" disabled=${busy}>Захира кун</button></div>
+    </form>
+  </div>`;
+}
+
 function App() {
   const [me, setMe] = useState(undefined);
   const [judge, setJudge] = useState(null);
@@ -92,6 +119,7 @@ function App() {
   let page;
   const T = me.role === 'teacher';
   if (!seg.length) page = T ? html`<${TeacherHome} />` : html`<${StudentHome} user=${me} />`;
+  else if (seg[0] === 'profile') page = html`<${Profile} me=${me} onSaved=${u => setMe(u)} />`;
   else if (seg[0] === 'problems') page = html`<${ProblemsList} user=${me} />`;
   else if (seg[0] === 'p' && !T) page = html`<${Workspace} key=${seg[1] + (q.lesson || '')} user=${me} pid=${Number(seg[1])} lessonId=${q.lesson ? Number(q.lesson) : null} />`;
   else if (seg[0] === 'lesson' && !T) page = html`<${StudentLesson} id=${seg[1]} />`;
