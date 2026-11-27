@@ -120,3 +120,26 @@ export function seedDemo(Q) {
     return true;
   });
 }
+
+// Ҳисоби устод аз танзимоти сервер (TEACHER_LOGIN, TEACHER_PASSWORD, TEACHER_NAME).
+// Агар чунин логин набошад, ҳисоби намоишии «ustod» (бо гурӯҳҳо ва дарси омода) ба он табдил меёбад.
+export function ensureTeacher(Q, env = process.env) {
+  const login = String(env.TEACHER_LOGIN || '').trim().toLowerCase();
+  const pw = String(env.TEACHER_PASSWORD || '');
+  if (!login) return null;
+  if (pw.length < 8) { console.log('TEACHER_PASSWORD бояд ҳадди ақал 8 аломат бошад — ҳисоби устод сохта нашуд.'); return null; }
+  const name = String(env.TEACHER_NAME || '').trim() || 'Устод';
+  const ex = Q.get('SELECT id, role FROM users WHERE login=?', login);
+  if (ex) {
+    Q.run("UPDATE users SET pass_hash=?, name=?, role='teacher' WHERE id=?", hashPassword(pw), name, ex.id);
+    return { id: ex.id, login, created: false };
+  }
+  const demo = Q.get("SELECT id FROM users WHERE login='ustod' AND role='teacher'");
+  if (demo) {
+    Q.run('UPDATE users SET login=?, name=?, pass_hash=? WHERE id=?', login, name, hashPassword(pw), demo.id);
+    Q.run('DELETE FROM sessions WHERE user_id=?', demo.id);
+    return { id: demo.id, login, created: false, fromDemo: true };
+  }
+  const id = Number(Q.run("INSERT INTO users (login, name, pass_hash, role) VALUES (?,?,?,'teacher')", login, name, hashPassword(pw)).lastInsertRowid);
+  return { id, login, created: true };
+}
