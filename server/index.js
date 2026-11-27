@@ -6,6 +6,7 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 // .env-и оддӣ (калидҳо танҳо дар сервер мемонанд)
 const envFile = path.join(root, '.env');
 if (fs.existsSync(envFile)) {
+  try { fs.chmodSync(envFile, 0o600); } catch {}
   for (const line of fs.readFileSync(envFile, 'utf8').split('\n')) {
     const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
     if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');

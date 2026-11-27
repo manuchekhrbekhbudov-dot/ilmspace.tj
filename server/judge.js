@@ -92,7 +92,10 @@ fs.mkdirSync(WORK, { recursive: true, mode: 0o755 });
 function sh(cmd, args, { input = '', timeoutMs, maxOut = LIMITS.outputBytes, cwd } = {}) {
   return new Promise(resolve => {
     const t0 = Date.now();
-    const p = spawn(cmd, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });
+    // Муҳити тоза: барномаи шогирд калидҳо ва DATABASE_URL-и серверро намебинад
+    const env = { PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin', LANG: 'C.UTF-8', HOME: os.tmpdir(), TMPDIR: os.tmpdir() };
+    if (process.platform === 'win32') Object.assign(env, { SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, TMP: process.env.TMP });
+    const p = spawn(cmd, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
     let out = Buffer.alloc(0), err = Buffer.alloc(0), overflow = false, timedOut = false;
     p.stdout.on('data', d => {
       if (out.length + d.length > maxOut) { overflow = true; out = Buffer.concat([out, d]).subarray(0, maxOut); p.kill('SIGKILL'); }

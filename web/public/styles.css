@@ -277,3 +277,17 @@ a.num, button.num { font-weight: 800; color: var(--acc); background: none; borde
   .setitem .t { white-space: nowrap; }
   .setlay .ws { height: auto; flex: 1; min-height: 0; }
 }
+
+/* Ислоҳҳои санҷиш: тугма-силка бе хат; ҷадвалчаҳо дар телефон скрол мешаванд */
+a.btn, a.btn:hover { text-decoration: none; }
+.tabs { overflow-x: auto; scrollbar-width: thin; }
+.tabs button { white-space: nowrap; flex: none; }
+@media (max-width: 760px) {
+  .card table.t { display: block; overflow-x: auto; }
+  .proj { padding: 16px; font-size: 18px; }
+  .proj pre, .proj .vote { overflow-x: auto; }
+  .proj .vote { grid-template-columns: 1fr; }
+  .row > * { min-width: 0; }
+  label.f { min-width: 0; }
+  .io3 > div, .grid2 > *, .grid3 > * { min-width: 0; }
+}

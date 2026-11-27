@@ -210,7 +210,10 @@ CREATE INDEX IF NOT EXISTS idx_help_group ON help_requests(group_id, status);
 
 export function openDb(file) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
+  // Папкаи база танҳо барои сервер: барномаи шогирд (корбари nobody) онро хонда наметавонад
+  try { fs.chmodSync(path.dirname(file), 0o700); } catch {}
   const db = new DatabaseSync(file);
+  try { fs.chmodSync(file, 0o600); } catch {}
   db.exec(SCHEMA);
   // Муҳоҷират: сохтори «ҳафта → рӯз → маҷмӯаҳо»
   const cols = db.prepare('PRAGMA table_info(lessons)').all().map(c => c.name);
