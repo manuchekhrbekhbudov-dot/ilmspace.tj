@@ -14,7 +14,7 @@ if (fs.existsSync(envFile)) {
 }
 const { createApp } = await import('./app.js');
 const { restore, startSync, persistStatus } = await import('./persist.js');
-const { judgeStatus } = await import('./judge.js');
+const { judgeStatus, ensurePch } = await import('./judge.js');
 
 const port = Number(process.env.PORT || 3000);
 const dbFile = process.env.DB_FILE || path.join(root, 'data', 'codelab.db');
@@ -24,6 +24,7 @@ const { server, db } = createApp({
   staticDir: path.join(root, 'web', 'public'),
 });
 startSync(db, dbFile);
+ensurePch();  // дар пасманзар
 server.listen(port, () => {
   const j = judgeStatus();
   console.log(`ILMSPACE CodeLab: http://localhost:${port}`);

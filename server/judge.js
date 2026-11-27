@@ -37,7 +37,7 @@ export function judgeStatus() {
     if (!hasGpp()) return { ok: false, driver: 'local', reason: 'Дар сервер g++ ёфт нашуд.', steps: SETUP_STEPS };
     const I = isolation();
     const full = I.setpriv && I.prlimit && (I.unshare || I.noFiles);
-    return { ok: true, driver: 'local', isolation: I, warning: full ? undefined : 'Санҷандаи маҳаллӣ бе ҷудокунии пурра кор мекунад — танҳо барои санҷиш дар компютери худ. Барои дарси воқеӣ Judge0 пайваст кунед.' };
+    return { ok: true, driver: 'local', isolation: I, pch: pchStatus(), parallel: MAX_PARALLEL, memoryMb: MEM_MB, warning: full ? undefined : 'Санҷандаи маҳаллӣ бе ҷудокунии пурра кор мекунад — танҳо барои санҷиш дар компютери худ. Барои дарси воқеӣ Judge0 пайваст кунед.' };
   }
   return { ok: false, driver: c.driver, reason: 'Санҷандаи C++ танзим нашудааст (JUDGE_DRIVER).', steps: SETUP_STEPS };
 }
@@ -74,7 +74,16 @@ export function firstDiff(expected, actual) {
 }
 
 // ---------- Навбат (маҳдудияти ҳамзамонӣ) ----------
-const MAX_PARALLEL = Number(process.env.JUDGE_PARALLEL || 2);
+// Хотираи контейнер (cgroup): дар Render-и ройгон 512 МБ — он гоҳ санҷишҳо як ба як ва хотираи барнома маҳдуд
+export function containerMemMb() {
+  for (const f of ['/sys/fs/cgroup/memory.max', '/sys/fs/cgroup/memory/memory.limit_in_bytes']) {
+    try { const v = fs.readFileSync(f, 'utf8').trim(); if (/^\d+$/.test(v)) { const mb = Number(v) / 1048576; if (mb > 0 && mb < 1e6) return Math.round(mb); } } catch {}
+  }
+  return Math.round(os.totalmem() / 1048576);
+}
+const MEM_MB = containerMemMb();
+const MAX_PARALLEL = Number(process.env.JUDGE_PARALLEL || (MEM_MB < 1100 ? 1 : 2));
+const RUN_MEM_CAP_MB = Number(process.env.JUDGE_MAX_MEMORY_MB || Math.max(64, Math.floor(MEM_MB / 4)));
 let active = 0; const waiting = [];
 function slot() {
   return new Promise(res => {
@@ -89,31 +98,73 @@ const WORK = path.join(os.tmpdir(), 'codelab-judge');
 const EXE = process.platform === 'win32' ? 'prog.exe' : 'prog';
 fs.mkdirSync(WORK, { recursive: true, mode: 0o755 });
 
-function sh(cmd, args, { input = '', timeoutMs, maxOut = LIMITS.outputBytes, cwd } = {}) {
+function sh(cmd, args, { input = '', timeoutMs, maxOut = LIMITS.outputBytes, cwd, killAs = null } = {}) {
   return new Promise(resolve => {
     const t0 = Date.now();
     // Муҳити тоза: барномаи шогирд калидҳо ва DATABASE_URL-и серверро намебинад
     const env = { PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin', LANG: 'C.UTF-8', HOME: os.tmpdir(), TMPDIR: os.tmpdir() };
     if (process.platform === 'win32') Object.assign(env, { SystemRoot: process.env.SystemRoot, TEMP: process.env.TEMP, TMP: process.env.TMP });
     const p = spawn(cmd, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
-    let out = Buffer.alloc(0), err = Buffer.alloc(0), overflow = false, timedOut = false;
+    let out = Buffer.alloc(0), err = Buffer.alloc(0), overflow = false, timedOut = false, killed = false, done = false;
+    // Қатъ кардан. Агар барнома аз номи корбари дигар бошад ва сервер ҳуқуқ надошта бошад (EPERM, масалан дар Render),
+    // фармони kill аз номи ҳамон корбар иҷро мешавад.
+    const kill = () => {
+      if (killed || !p.pid) return; killed = true;
+      try { process.kill(p.pid, 'SIGKILL'); return; } catch {}
+      if (killAs) { try { spawn(killAs[0], [...killAs.slice(1), '/bin/sh', '-c', `kill -9 ${p.pid}`], { stdio: 'ignore' }).on('error', () => {}); } catch {} }
+    };
     p.stdout.on('data', d => {
-      if (out.length + d.length > maxOut) { overflow = true; out = Buffer.concat([out, d]).subarray(0, maxOut); p.kill('SIGKILL'); }
+      if (out.length + d.length > maxOut) { overflow = true; out = Buffer.concat([out, d]).subarray(0, maxOut); kill(); }
       else out = Buffer.concat([out, d]);
     });
     p.stderr.on('data', d => { if (err.length < 65536) err = Buffer.concat([err, d]); });
-    const timer = setTimeout(() => { timedOut = true; p.kill('SIGKILL'); }, timeoutMs);
-    p.on('error', e => { clearTimeout(timer); resolve({ code: -1, signal: null, out: '', err: String(e), overflow, timedOut, ms: Date.now() - t0, spawnError: true }); });
-    p.on('close', (code, signal) => {
-      clearTimeout(timer);
-      resolve({ code, signal, out: out.toString('utf8'), err: err.toString('utf8'), overflow, timedOut, ms: Date.now() - t0 });
-    });
+    const timer = setTimeout(() => { timedOut = true; kill(); }, timeoutMs);
+    // Агар kill-и аввал нагузарад, пас аз 3 сония боз кӯшиш (ҳеҷ барнома овезон намемонад)
+    const guard = setTimeout(() => { if (!done) { killed = false; kill(); } }, timeoutMs + 3000);
+    const finish = r => { if (done) return; done = true; clearTimeout(timer); clearTimeout(guard); resolve(r); };
+    p.on('error', e => finish({ code: -1, signal: null, out: '', err: String(e), overflow, timedOut, ms: Date.now() - t0, spawnError: true }));
+    p.on('close', (code, signal) => finish({ code, signal, out: out.toString('utf8'), err: err.toString('utf8'), overflow, timedOut, ms: Date.now() - t0 }));
     p.stdin.on('error', () => {});
     p.stdin.end(input);
   });
 }
 
 const compiled = new Map(); // hash -> {dir, ok, msg}
+// Компилятсия: аз номи корбари бе ҳуқуқ ва бо маҳдудият (то #include "/proc/1/environ" ва ғайра кор накунад)
+const NOBODY = ['setpriv', '--reuid=65534', '--regid=65534', '--clear-groups', '--'];
+const COMPILE_FLAGS = ['-std=c++17', '-O2', '-pipe'];
+const COMPILE_AS_MB = Math.max(256, Math.min(768, Math.floor(MEM_MB * 0.75)));
+const COMPILE_WALL_MS = MEM_MB < 1100 ? 120000 : LIMITS.compileMs;   // протсессори суст — вақти девор зиёдтар
+function compilePrefix() {
+  const I = isolation(); const pre = [];
+  if (I.setpriv) pre.push(...NOBODY);
+  if (I.prlimit) pre.push('prlimit', `--as=${COMPILE_AS_MB * 1024 * 1024}`, '--cpu=60', `--fsize=${64 << 20}`, '--nproc=64');
+  return pre;
+}
+
+// <bits/stdc++.h>-и пешакӣ компилятсияшуда: компилятсияро ~3 маротиба тез мекунад (махсусан дар Render)
+const PCH_DIR = path.join(WORK, 'pch');
+let pchReady = false, pchStarted = false;
+export function pchStatus() { return pchReady ? 'ready' : pchStarted ? 'building' : 'off'; }
+export function ensurePch() {
+  if (pchStarted || process.env.JUDGE_PCH === '0' || judgeConfig().driver !== 'local' || !hasGpp()) return;
+  pchStarted = true;
+  (async () => {
+    const release = await slot();
+    try {
+      const probe = await sh('g++', ['-std=c++17', '-x', 'c++', '-fsyntax-only', '-H', '-'], { input: '#include <bits/stdc++.h>\n', timeoutMs: 300000, maxOut: 1 << 16 });
+      const line = probe.err.split('\n').map(l => l.trim()).find(l => /^\. .*stdc\+\+\.h$/.test(l));
+      if (!line) return;
+      const hdr = path.join(PCH_DIR, 'bits', 'stdc++.h');
+      fs.mkdirSync(path.dirname(hdr), { recursive: true, mode: 0o755 });
+      fs.copyFileSync(line.slice(2), hdr);
+      const r = await sh('g++', [...COMPILE_FLAGS, '-x', 'c++-header', hdr, '-o', hdr + '.gch.tmp'], { timeoutMs: 900000, maxOut: 1 << 20 });
+      if (r.code === 0) { fs.renameSync(hdr + '.gch.tmp', hdr + '.gch'); fs.chmodSync(hdr + '.gch', 0o644); pchReady = true; console.log(`Санҷанда: <bits/stdc++.h> пешакӣ компилятсия шуд (${Math.round(r.ms / 1000)} с).`); }
+      else console.error('Санҷанда: PCH сохта нашуд —', r.err.slice(0, 200));
+    } catch (e) { console.error('Санҷанда: PCH —', e.message); } finally { release(); }
+  })();
+}
+
 async function localCompile(code) {
   const hash = crypto.createHash('sha256').update(code).digest('hex').slice(0, 24);
   if (compiled.has(hash)) {
@@ -122,12 +173,17 @@ async function localCompile(code) {
   }
   const dir = path.join(WORK, hash);
   fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
-  fs.writeFileSync(path.join(dir, 'main.cpp'), code);
-  const r = await sh('g++', ['-std=c++17', '-O2', '-pipe', ...(isolation().static ? ['-static'] : []), '-o', EXE, 'main.cpp'], { cwd: dir, timeoutMs: LIMITS.compileMs, maxOut: 1 << 20 });
+  fs.writeFileSync(path.join(dir, 'main.cpp'), code, { mode: 0o644 });
+  const I = isolation();
+  if (I.setpriv) { try { fs.chownSync(dir, 65534, 65534); } catch {} }
+  const pre = compilePrefix();
+  const args = [...COMPILE_FLAGS, ...(pchReady ? ['-I', PCH_DIR] : []), ...(I.static ? ['-static'] : []), '-o', EXE, 'main.cpp'];
+  const full = [...pre, 'g++', ...args];
+  const r = await sh(full[0], full.slice(1), { cwd: dir, timeoutMs: COMPILE_WALL_MS, maxOut: 1 << 20, killAs: I.setpriv ? NOBODY : null });
   let res;
   if (r.spawnError) res = { ok: false, service: true, msg: 'g++ оғоз нашуд: ' + r.err };
-  else if (r.timedOut) res = { ok: false, msg: 'Компилятсия аз 30 сония зиёд давом кард.' };
-  else if (r.code !== 0) res = { ok: false, msg: r.err.replaceAll(dir + path.sep, '').replaceAll(dir + '/', '').slice(0, 20000) };
+  else if (r.timedOut || r.signal) res = { ok: false, msg: `Компилятсия аз маҳдудият гузашт (вақт ё хотира). Код хеле мураккаб аст ё компилятор бор аст — боз кӯшиш кунед.` };
+  else if (r.code !== 0) res = { ok: false, msg: r.err.replaceAll(dir + path.sep, '').replaceAll(dir + '/', '').replaceAll(PCH_DIR + '/', '').slice(0, 20000) };
   else { try { fs.chmodSync(path.join(dir, EXE), 0o755); } catch {} res = { ok: true, dir }; }
   res.dir = dir;
   compiled.set(hash, res);
@@ -165,14 +221,18 @@ async function localRun(dir, stdin, lim) {
   const cpuSec = Math.max(1, Math.ceil(lim.timeMs / 1000));
   const I = isolation();
   const cmd = [];
+  const asNobody = ['setpriv', '--reuid=65534', '--regid=65534', '--clear-groups', '--'];
+  const memMb = Math.min(lim.memoryMb, RUN_MEM_CAP_MB);
   if (I.unshare) cmd.push('unshare', '-n');                                   // бе шабака
-  if (I.setpriv) cmd.push('setpriv', '--reuid=65534', '--regid=65534', '--clear-groups', '--'); // корбари бе ҳуқуқ
-  if (I.prlimit) cmd.push('prlimit', `--as=${lim.memoryMb * 1024 * 1024}`, `--cpu=${cpuSec}`, `--fsize=${1 << 20}`, '--nproc=64', `--stack=${64 * 1024 * 1024}`, ...(I.noFiles ? ['--nofile=3'] : []));
+  if (I.setpriv) cmd.push(...asNobody);                                        // корбари бе ҳуқуқ
+  if (I.prlimit) cmd.push('prlimit', `--as=${memMb * 1024 * 1024}`, `--cpu=${cpuSec}`, `--fsize=${1 << 20}`, '--nproc=64', `--stack=${Math.min(64, memMb / 2) * 1024 * 1024}`, ...(I.noFiles ? ['--nofile=3'] : []));
   cmd.push(path.join(dir, EXE));
-  const r = await sh(cmd[0], cmd.slice(1), { input: stdin, timeoutMs: lim.timeMs * 2 + 500, maxOut: lim.outputBytes, cwd: dir });
+  // Вақти CPU-ро ядро (RLIMIT_CPU) назорат мекунад; вақти девор барои протсессори суст (Render) калонтар
+  const wallMs = I.prlimit ? Math.max(10000, lim.timeMs * 5) : lim.timeMs * 2 + 500;
+  const r = await sh(cmd[0], cmd.slice(1), { input: stdin, timeoutMs: wallMs, maxOut: lim.outputBytes, cwd: dir, killAs: I.setpriv ? asNobody : null });
   if (r.spawnError) return { status: 'SE', detail: r.err };
   if (r.overflow) return { status: 'OLE', stdout: r.out, ms: r.ms };
-  if (r.timedOut || r.signal === 'SIGXCPU' || (r.signal === 'SIGKILL' && r.ms >= lim.timeMs * 0.8) || r.ms > lim.timeMs * 1.5 + 300) return { status: 'TLE', stdout: r.out, ms: r.ms };
+  if (r.timedOut || r.signal === 'SIGXCPU' || r.signal === 'SIGKILL' || (!I.prlimit && r.ms > lim.timeMs * 1.5 + 300)) return { status: 'TLE', stdout: r.out, ms: r.ms };
   if (/bad_alloc/.test(r.err)) return { status: 'MLE', stdout: r.out, stderr: r.err.slice(0, 2000), ms: r.ms };
   if (r.code !== 0 || r.signal) return { status: 'RE', stdout: r.out, stderr: r.err.slice(0, 2000), exitCode: r.code, signal: r.signal, ms: r.ms };
   return { status: 'OK', stdout: r.out, stderr: r.err.slice(0, 2000), ms: r.ms };
