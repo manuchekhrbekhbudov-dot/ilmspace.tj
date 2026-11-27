@@ -59,8 +59,9 @@ function Auth({ onAuth }) {
       </div>
       <form class="col" onSubmit=${submit}>
         ${mode === 'register' && html`<label class="f">Ном ва насаб<input class="i" autocomplete="name" value=${f.name} onInput=${e => setF({ ...f, name: e.target.value })} placeholder="Мадина Азизова" required /></label>`}
-        <label class="f">Логин<input class="i mono" autocomplete="username" autocapitalize="off" value=${f.login} onInput=${e => setF({ ...f, login: e.target.value })} required /></label>
+        <label class="f">Логин<input class="i mono" autocomplete="username" autocapitalize="off" value=${f.login} onInput=${e => setF({ ...f, login: e.target.value })} required placeholder=${mode === 'register' ? 'масалан: madina2012 ё мадина' : ''} /></label>
         <label class="f">Парол<input class="i" type="password" autocomplete=${mode === 'login' ? 'current-password' : 'new-password'} value=${f.password} onInput=${e => setF({ ...f, password: e.target.value })} required /></label>
+        ${mode === 'register' && html`<div class="small muted">Логин: 3–32 аломат, бе фосила. Парол: ҳадди ақал 8 аломат.</div>`}
         ${err && html`<div class="err" role="alert">${err}</div>`}
         <button class="btn p lg" disabled=${busy}>${busy ? html`<span class="spin"></span>` : ''} ${mode === 'login' ? 'Ворид шав' : 'Сабти ном кун'}</button>
         ${mode === 'register' && html`<div class="small muted">Пас аз сабти ном логини худро ба устод гӯед ё рамзи даъвати гурӯҳро ворид кунед.</div>`}

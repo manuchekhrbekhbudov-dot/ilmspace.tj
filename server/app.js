@@ -320,8 +320,8 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   R('POST', '/api/register', ({ body }) => {
     const name = String(body.name || '').trim(), login = String(body.login || '').trim().toLowerCase(), pw = String(body.password || '');
     if (name.length < 2) throw bad('Ном ва насабро нависед.');
-    if (!/^[a-z0-9_.-]{3,32}$/.test(login)) throw bad('Логин: 3–32 аломат, ҳарфҳои лотинӣ, рақам, «_», «.» ё «-».');
-    if (pw.length < 6) throw bad('Парол бояд ҳадди ақал 6 аломат бошад.');
+    if (login.length < 3 || login.length > 32 || /\s/.test(login)) throw bad('Логин бояд аз 3 то 32 аломат бошад ва фосила надошта бошад. Ҳар гуна ҳарф (тоҷикӣ ё лотинӣ), рақам ва аломат мумкин аст.');
+    if (pw.length < 8) throw bad('Парол бояд ҳадди ақал 8 аломат бошад (ҳар гуна ҳарф, рақам ё аломат).');
     if (Q.get('SELECT 1 FROM users WHERE login=?', login)) throw bad('Ин логин аллакай банд аст.');
     const id = Number(Q.run("INSERT INTO users (login, name, pass_hash, role) VALUES (?,?,?,'student')", login, name, hashPassword(pw)).lastInsertRowid);
     const t = token(); Q.run('INSERT INTO sessions (token, user_id) VALUES (?,?)', t, id);
