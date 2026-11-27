@@ -62,9 +62,10 @@ export function databaseUrl(env = process.env) {
   const colon = userinfo.indexOf(':');
   const user = colon < 0 ? userinfo : userinfo.slice(0, colon);
   let pass = colon < 0 ? '' : userinfo.slice(colon + 1);
-  if (pw) pass = encodeURIComponent(pw);
+  const unbracket = v => { const m = /^\[(.+)\]$/.exec(v); return m && !PLACEHOLDER.test(v) ? m[1] : v; };  // [парол] → парол
+  if (pw) pass = encodeURIComponent(unbracket(pw));
   else if (PLACEHOLDER.test(pass)) return { url, error: 'Пароли база намерасад: дар Render тағйирёбандаи DATABASE_PASSWORD-ро бо пароли базаи Supabase илова кунед.' };
-  else if (pass && !/%[0-9a-f]{2}/i.test(pass)) pass = encodeURIComponent(pass);
+  else if (pass) { pass = unbracket(pass); if (!/%[0-9a-f]{2}/i.test(pass)) pass = encodeURIComponent(pass); }
   return { url: scheme + user + (pass ? ':' + pass : '') + '@' + hostpart };
 }
 
