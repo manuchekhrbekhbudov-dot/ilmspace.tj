@@ -1,7 +1,24 @@
 // Саҳифаҳои устод: гурӯҳҳо, қолабҳо, ҳисобот, вазифаҳо
-import { html, useState, useEffect, api, useLoad, useEvents, Loading, ErrorBox, Empty, Modal, fTime, fDate, fDateTime, fWeekday, dushanbeToday, dushanbeDateOf, TOPIC, TOPIC_KEYS, Verdict, toast, CodeView } from './lib.js';
+import { html, useState, useEffect, api, useLoad, useEvents, Loading, ErrorBox, Empty, Modal, fTime, fDate, fDateTime, fWeekday, dushanbeToday, dushanbeDateOf, TOPIC, TOPIC_KEYS, Verdict, toast, CodeView, since } from './lib.js';
 import { AsgState } from './student.js';
 import { CourseMap } from './course.js';
+
+// Шогирдони блокшуда дар ҳамаи гурӯҳҳо — бо тугмаи «Блокро бардор»
+function BlockedPanel() {
+  const [{ data }, reload] = useLoad(() => api('/api/teacher/alerts'));
+  useEvents(ev => { if (ev.type === 'exam') reload(true); });
+  if (!data?.blocked?.length) return null;
+  const unblock = async b => { try { await api(`/api/lessons/${b.lesson_id}/unblock`, { method: 'POST', body: { user_id: b.user_id } }); toast(`Блоки ${b.name} бардошта шуд — ӯ боз ба имтиҳон медарояд.`); reload(true); } catch (e) { toast(e.message); } };
+  return html`<section class="blockpanel" role="alert" aria-label="Шогирдони блокшуда">
+    <h2>⛔ Шогирдони блокшуда: ${data.blocked.length}</h2>
+    <div class="small" style="margin-bottom:6px">Ин шогирдон дар имтиҳон 3 вайронкунӣ карданд. Танҳо шумо блокро бардошта метавонед.</div>
+    ${data.blocked.map(b => html`<div class="bprow">
+      <div class="bpwho"><b>${b.name}</b> <span class="mono small muted">${b.login}</span><div class="small muted">${b.group_name} · ${b.lesson_title} · ${since(b.updated_at) === '0 дақ.' ? 'ҳозир' : since(b.updated_at) + ' пеш'}</div></div>
+      <a class="btn sm" href=${'#/g/' + b.group_id + '?tab=students'}>Гурӯҳ</a>
+      <button class="btn p" onClick=${() => unblock(b)}>Блокро бардор</button>
+    </div>`)}
+  </section>`;
+}
 
 export function TeacherHome() {
   const [{ data, loading, error }, reload] = useLoad(() => Promise.all([api('/api/groups'), api('/api/templates')]));
@@ -13,6 +30,7 @@ export function TeacherHome() {
   const today = dushanbeToday();
   const sorted = [...groups].sort((a, b) => (b.live ? 2 : b.hasLessonToday ? 1 : 0) - (a.live ? 2 : a.hasLessonToday ? 1 : 0));
   return html`<div class="page">
+    <${BlockedPanel} />
     <div class="row" style="margin-bottom:16px"><h1>Гурӯҳҳои ман</h1><div class="spacer"></div><button class="btn" onClick=${() => setCreating(true)}>+ Гурӯҳи нав</button></div>
     ${!groups.length && html`<div class="card"><${Empty} title="Ҳанӯз гурӯҳ нест">Гурӯҳи аввалро созед — 24 дарс (ҳафтае 6 бор) худкор ба нақша гирифта мешаванд.<div style="margin-top:12px"><button class="btn p" onClick=${() => setCreating(true)}>Гурӯҳ соз</button></div><//></div>`}
     <div class="col" style="gap:14px">${sorted.map((g, gi) => {
@@ -24,6 +42,7 @@ export function TeacherHome() {
             <h2 style="margin:4px 0">${g.name}</h2>
             <div class="muted small">${n ? html`Дарси ${n.number}: <b>${n.title}</b> · ` : ''}${g.students} шогирд · ${g.lessonsDone}/${g.lessonsTotal} дарс гузашт</div>
           </div>
+          ${g.blocked > 0 && html`<a class="chip bad" href=${'#/g/' + g.id + '?tab=students'}>⛔ ${g.blocked} блок</a>`}
           ${g.helpOpen > 0 && html`<span class="chip warn">✋ ${g.helpOpen} дархости ёрӣ</span>`}
           ${g.pendingCount > 0 && html`<a class="chip acc" href=${'#/g/' + g.id + '?tab=students'}>${g.pendingCount} шогирд интизори тасдиқ</a>`}
           ${n && html`<a class="btn" href=${'#/live/' + n.id}>${g.live ? 'Дарси зинда' : 'Дарси зинда'}</a>`}
@@ -106,7 +125,8 @@ function QuickStudents({ g, reload, openTab }) {
 export function GroupPage({ id, tab: tab0 }) {
   const [{ data, loading, error }, reload] = useLoad(() => Promise.all([api(`/api/groups/${id}`), api('/api/templates'), api('/api/problems')]), [id]);
   const [tab, setTab] = useState(tab0 || 'course');
-  useEvents(ev => { if (['members', 'assignment', 'activity'].includes(ev.type) && Number(ev.group_id) === Number(id)) reload(true); }, [id]);
+  useEffect(() => { if (tab0) setTab(tab0); }, [tab0]);
+  useEvents(ev => { if (['members', 'assignment', 'activity', 'exam'].includes(ev.type) && Number(ev.group_id) === Number(id)) reload(true); }, [id]);
   if (loading) return html`<${Loading} />`;
   if (error && !data) return html`<div class="page"><${ErrorBox} error=${error} retry=${reload} /></div>`;
   const [g, templates, problems] = data;
@@ -151,7 +171,7 @@ function StudentsTab({ g, reload }) {
       ${active.some(m => m.exam_blocked?.length) && html`<div class="notice bad" style="margin-bottom:10px" role="alert"><b>⛔ Дар имтиҳон блок шудаанд:</b>
         ${active.filter(m => m.exam_blocked?.length).flatMap(m => m.exam_blocked.map(b => html`<div class="row" style="margin-top:6px"><b>${m.name}</b><span class="small">${b.title}</span><div class="spacer"></div>
           <button class="btn sm p" onClick=${() => act(() => api(`/api/lessons/${b.lesson_id}/unblock`, { method: 'POST', body: { user_id: m.id } }), `Блоки ${m.name} бардошта шуд.`)}>Блокро бардор</button></div>`))}</div>`}
-      ${!active.length ? html`<div class="muted">Ҳанӯз шогирд нест.</div>` : html`<table class="t"><tbody>${active.map(m => html`<tr><td><b>${m.name}</b> <span class="muted mono small">${m.login}</span>${m.exam_blocked?.length ? html` <span class="v v-bad">⛔ Блок</span>` : ''}</td><td style="text-align:right;white-space:nowrap"><a class="btn sm" href=${`#/g/${g.group.id}/s/${m.id}`}>Пешрафт</a> <button class="btn sm" onClick=${() => resetPw(m)}>Пароли нав</button> <button class="btn sm danger" onClick=${() => confirm(`${m.name}-ро аз гурӯҳ хориҷ кунем?`) && act(() => api(`/api/groups/${g.group.id}/members/${m.id}`, { method: 'DELETE' }))}>Хориҷ кун</button></td></tr>`)}</tbody></table>`}
+      ${!active.length ? html`<div class="muted">Ҳанӯз шогирд нест.</div>` : html`<table class="t"><tbody>${active.map(m => html`<tr><td><b>${m.name}</b> <span class="muted mono small">${m.login}</span>${(m.exams || []).map(e => html` <span class=${'v ' + (e.blocked ? 'v-bad' : 'v-warn')} title=${e.title}>${e.blocked ? '⛔ Блок' : `⚠ ${e.count}/3`} · ${e.title}</span>`)}</td><td style="text-align:right;white-space:nowrap"><a class="btn sm" href=${`#/g/${g.group.id}/s/${m.id}`}>Пешрафт</a> <button class="btn sm" onClick=${() => resetPw(m)}>Пароли нав</button> <button class="btn sm danger" onClick=${() => confirm(`${m.name}-ро аз гурӯҳ хориҷ кунем?`) && act(() => api(`/api/groups/${g.group.id}/members/${m.id}`, { method: 'DELETE' }))}>Хориҷ кун</button></td></tr>`)}</tbody></table>`}
       ${pw && html`<div class="notice ok" style="margin-top:10px" role="status">Пароли нав барои <b>${pw.name}</b>: логин <b class="mono">${pw.login}</b>, парол <b class="mono" style="font-size:18px">${pw.password}</b><div class="small">Ба шогирд гӯед. Ӯ баъд дар «👤 Ҳисоби ман» пароли худро гузошта метавонад.</div></div>`}
       <div class="sep"></div>
       <div class="row"><a class="btn" href=${`/api/groups/${g.group.id}/export.csv`} download>⬇ Натиҷаҳо ба Excel</a><div class="spacer"></div>

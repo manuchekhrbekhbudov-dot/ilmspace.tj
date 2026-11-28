@@ -64,7 +64,9 @@ export function CourseMap({ gid, embedded }) {
           <span class=${'state ' + STATE[d.state][1]}>${STATE[d.state][0]}</span>
         </div>
         <div class="daybottom">
-          <div class="chips">${['class', 'home', 'extra'].map(k => html`<${SetChip} k=${k} s=${d.sets[k]} role=${role} kind=${d.kind} />`)}</div>
+          <div class="chips">${['class', 'home', 'extra'].map(k => html`<${SetChip} k=${k} s=${d.sets[k]} role=${role} kind=${d.kind} />`)}
+            ${d.exam?.blocked > 0 && html`<span class="chip bad">⛔ ${d.exam.blocked} блок</span>`}
+            ${d.exam?.warned > 0 && html`<span class="chip warn">⚠ ${d.exam.warned} вайронкунӣ</span>`}</div>
           <span class="chev"><${Icon} name="chevron" /></span>
         </div>
       </button>`)}</div>

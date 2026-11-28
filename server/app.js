@@ -412,6 +412,14 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   R('GET', '/api/student/home', ({ user }) => studentHome(need(user, 'student')));
 
   // Устод: гурӯҳҳо
+  // Огоҳиҳои устод: шогирдони блокшуда дар ҳамаи гурӯҳҳо (дар сарлавҳа ва саҳифаи асосӣ нишон дода мешаванд)
+  R('GET', '/api/teacher/alerts', ({ user }) => {
+    need(user, 'teacher');
+    const blocked = Q.all(`SELECT v.user_id, u.name, u.login, v.lesson_id, l.title AS lesson_title, g.id AS group_id, g.name AS group_name, v.count, v.last_type, v.updated_at
+      FROM exam_violations v JOIN lessons l ON l.id=v.lesson_id JOIN groups g ON g.id=l.group_id JOIN users u ON u.id=v.user_id
+      WHERE g.teacher_id=? AND v.blocked=1 ORDER BY v.updated_at DESC`, user.id);
+    return { blocked };
+  });
   R('GET', '/api/groups', ({ user }) => {
     need(user, 'teacher');
     const today = dushanbeDate();
@@ -422,7 +430,8 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
       return { ...g, students: Q.get("SELECT COUNT(*) c FROM group_members WHERE group_id=? AND status='active'", g.id).c,
         pendingCount: Q.get("SELECT COUNT(*) c FROM group_members WHERE group_id=? AND status='pending'", g.id).c,
         lessonsTotal: ls.length, lessonsDone: ls.filter(l => l.status === 'finished').length, live, next,
-        hasLessonToday: !!ls.find(l => dushanbeDate(l.scheduled_at) === today), helpOpen: Q.get("SELECT COUNT(*) c FROM help_requests WHERE group_id=? AND status!='done'", g.id).c };
+        hasLessonToday: !!ls.find(l => dushanbeDate(l.scheduled_at) === today), helpOpen: Q.get("SELECT COUNT(*) c FROM help_requests WHERE group_id=? AND status!='done'", g.id).c,
+        blocked: Q.get('SELECT COUNT(*) c FROM exam_violations v JOIN lessons l ON l.id=v.lesson_id WHERE l.group_id=? AND v.blocked=1', g.id).c };
     });
   });
   R('POST', '/api/groups', ({ user, body }) => {
@@ -440,7 +449,10 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     need(user, 'teacher'); const gid = Number(params.id); if (!ownsGroup(user, gid)) throw forbidden();
     const g = Q.get('SELECT * FROM groups WHERE id=?', gid);
     const mem = Q.all('SELECT u.id, u.name, u.login, m.status, m.created_at FROM group_members m JOIN users u ON u.id=m.user_id WHERE m.group_id=? ORDER BY m.status, u.name', gid)
-      .map(m => ({ ...m, exam_blocked: Q.all('SELECT v.lesson_id, l.title FROM exam_violations v JOIN lessons l ON l.id=v.lesson_id WHERE v.user_id=? AND v.blocked=1 AND l.group_id=?', m.id, gid) }));
+      .map(m => {
+        const exams = Q.all('SELECT v.lesson_id, l.title, v.count, v.blocked, v.finished_at FROM exam_violations v JOIN lessons l ON l.id=v.lesson_id WHERE v.user_id=? AND l.group_id=? AND (v.blocked=1 OR v.count>0) ORDER BY l.scheduled_at', m.id, gid);
+        return { ...m, exams, exam_blocked: exams.filter(e => e.blocked) };
+      });
     const lessons = Q.all('SELECT * FROM lessons WHERE group_id=? ORDER BY scheduled_at', gid).map(l => ({ ...l, steps: Q.get('SELECT COUNT(*) c FROM lesson_steps WHERE lesson_id=?', l.id).c, homework_problem_ids: J(l.homework_problem_ids) }));
     const asg = Q.all('SELECT * FROM assignments WHERE group_id=? ORDER BY due_at', gid).map(a => {
       const active = mem.filter(m => m.status === 'active');
@@ -672,7 +684,10 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
       const state = l.status === 'live' ? 'live' : locked ? 'locked' : u.role === 'teacher' && !isOpen(l) ? 'closed' : date === today ? 'today'
         : (u.role === 'student' && all.length && all.every(id => solved.has(id))) || (u.role === 'teacher' && l.status === 'finished') ? 'done'
         : date < today ? 'progress' : 'planned';
+      const examStat = u.role === 'teacher' && l.kind === 'exam'
+        ? Q.get('SELECT SUM(blocked) blocked, SUM(CASE WHEN count>0 AND blocked=0 THEN 1 ELSE 0 END) warned, SUM(CASE WHEN accepted_at IS NOT NULL THEN 1 ELSE 0 END) entered FROM exam_violations WHERE lesson_id=?', l.id) : null;
       return { id: l.id, number: l.number, week: w, day: d, kind: l.kind, title: l.title, topic: l.topic, scheduled_at: l.scheduled_at, status: l.status, state, locked, opened: isOpen(l),
+        exam: examStat ? { blocked: examStat.blocked || 0, warned: examStat.warned || 0, entered: examStat.entered || 0 } : undefined,
         sets: { class: count(sets.class), home: count(sets.home), extra: count(sets.extra) } };
     });
     const weeks = [];

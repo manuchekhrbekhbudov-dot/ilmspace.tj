@@ -22,6 +22,16 @@ function toggleTheme() {
   document.documentElement.dataset.theme = next; store.set('theme', next); try { localStorage.setItem('theme', next); } catch {}
 }
 
+// Устод: шумораи шогирдони блокшуда дар ҳама саҳифаҳо (ба саҳифаи асосӣ мебарад)
+function BlockedBadge() {
+  const [n, setN] = useState(0);
+  const load = () => api('/api/teacher/alerts').then(r => setN(r.blocked.length)).catch(() => {});
+  useEffect(() => { load(); }, []);
+  useEvents(ev => { if (ev.type === 'exam') load(); });
+  if (!n) return null;
+  return html`<a class="alertpill" href="#/" title="Шогирдони блокшуда — пахш кунед">⛔ ${n} блок</a>`;
+}
+
 function Header({ user, hash, onLogout, judge, storage }) {
   const online = useOnline();
   const nav = user.role === 'teacher'
@@ -37,6 +47,7 @@ function Header({ user, hash, onLogout, judge, storage }) {
     ${user.role === 'teacher' && storage?.ephemeral && html`<span class="net" title=${storage.lastError || 'Дар Render DATABASE_URL-ро гузоред (README)'}>${storage.mode === 'invalid' ? 'DATABASE_URL нодуруст — маълумот муваққатӣ' : 'Маълумот муваққатӣ аст'}</span>`}
     ${user.role === 'teacher' && storage?.mode === 'postgres' && storage.lastError && html`<span class="net" title=${storage.lastError}>Нусха ба база нарафт</span>`}
     ${user.role === 'teacher' && judge?.ok && judge.warning && html`<span class="net" title=${judge.warning}>Санҷандаи маҳаллӣ бе ҷудокунӣ</span>`}
+    ${user.role === 'teacher' && html`<${BlockedBadge} />`}
     <button class="btn ghost icon-btn" onClick=${toggleTheme} title="Мавзӯи торик/равшан" aria-label="Мавзӯи торик/равшан">◐</button>
     <a class="userpill" href="#/profile" title="Ҳисоби ман: ном, логин ва парол"><span class="avatar" aria-hidden="true">${(user.name || '?').trim().charAt(0).toUpperCase()}</span><span class="uinfo"><b class="uname">${user.name}</b><small>${user.role === 'teacher' ? 'устод' : 'шогирд'} · ${user.login}</small></span></a>
     <button class="btn ghost sm" onClick=${onLogout}>Баромад</button>
