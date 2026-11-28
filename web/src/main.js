@@ -33,6 +33,11 @@ function BlockedBadge() {
   return html`<a class="alertpill" href="#/" title="Шогирдони блокшуда — пахш кунед">⛔ ${n} блок</a>`;
 }
 
+// Нишони ILMSPACE: бом, чорчӯба ва «iLM» бо нуқтаи норинҷӣ
+const LogoMark = () => html`<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M14 20 L32 8 L50 20" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="13" y="25" width="38" height="30" rx="6" fill="none" stroke="#fff" stroke-width="3.5"/>
+  <path d="M22.5 33 a3 3 0 0 1 0 6 z" fill="#ff7e2c"/><rect x="21" y="40" width="3.5" height="9" fill="#fff"/>
+  <path d="M27 33 h3.5 v12.5 h5.5 v3.5 h-9 z" fill="#fff"/><path d="M37.5 33 h3.5 l2.2 5 l2.2 -5 h3.5 v16 h-3.5 v-9 l-2.2 5 l-2.2 -5 v9 h-3.5 z" fill="#fff"/></svg>`;
 function Header({ user, hash, onLogout, judge, storage }) {
   const online = useOnline();
   const nav = user.role === 'teacher'
@@ -40,7 +45,7 @@ function Header({ user, hash, onLogout, judge, storage }) {
     : [['#/', 'Асосӣ'], ['#/course', 'Нақшаи курс'], ['#/journal', 'Журнал'], ['#/problems', 'Масъалаҳо']];
   const route = hash.split('?')[0];
   return html`<header class="top">
-    <a class="logo" href="#/">ILMSPACE <b>CodeLab</b></a>
+    <a class="logo" href="#/" aria-label="ILMSPACE CodeLab"><${LogoMark} /><span class="lw">ILM<b>SPACE</b></span><span class="lsub">CodeLab</span></a>
     <nav class="nav" aria-label="Асосӣ">${nav.map(([h, t]) => html`<a href=${h} class=${route === h ? 'on' : ''}>${t}</a>`)}</nav>
     <div class="spacer"></div>
     ${!online && html`<span class="net" role="status"><span class="long">Интернет нест — код дар дастгоҳ нигоҳ дошта мешавад</span><span class="short">Офлайн</span></span>`}

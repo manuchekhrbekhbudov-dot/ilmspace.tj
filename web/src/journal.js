@@ -2,7 +2,8 @@
 // Устод менависад; шогирд ҳамин ҷадвалро мебинад (бе шарҳҳо ва бе маълумоти падару модар).
 import { html, useState, api, useLoad, useEvents, Loading, ErrorBox, Modal, toast, fDateTime } from './lib.js';
 
-const COLORS = ['#e8736b', '#e9a15a', '#5fb8a6', '#7a9cc6', '#e6b84f', '#c084c8', '#6cc28f', '#d9826e', '#8fa7e0', '#d6a2b8', '#a3c46b', '#5fa8d3', '#c9a37a', '#9b8fd6', '#73c7c0', '#e08fa0'];
+// Рангҳои ҷавоҳирӣ (тилло, зумуррад, ёқут, сапфир…)
+const COLORS = ['#e0bd6e', '#5fbf9a', '#d9776f', '#6f9fd8', '#b58ad6', '#e39a5c', '#4fb3b8', '#c9a0a8', '#9fc26a', '#8c8fe0', '#d6b48a', '#6cc4e0', '#e07fa3', '#a3a3a3', '#78c98d', '#c78f4f'];
 const KIND = { auto: 'Худкор (аз рӯи ҳолати рӯз)', absent: 'Ғоибӣ', late: 'Дермонӣ', behavior: 'Рафтор', other: 'Дигар' };
 const KIND_SHORT = { auto: 'Худкор', absent: 'Ғоибӣ', late: 'Дермонӣ', behavior: 'Рафтор', other: 'Дигар' };
 const ddmm = d => d.split('-').reverse().join('.');

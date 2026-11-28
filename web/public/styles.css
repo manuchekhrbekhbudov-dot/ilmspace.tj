@@ -803,3 +803,154 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
 .jsel:focus, .jbonus:focus { outline: 0; border-color: var(--g2); box-shadow: 0 0 0 3px color-mix(in srgb, var(--g2) 25%, transparent); }
 .pct.hi { background: linear-gradient(90deg, color-mix(in srgb, var(--g3) 26%, transparent), color-mix(in srgb, var(--g3) 12%, transparent)); }
 @media (prefers-reduced-motion: reduce) { .daycard:hover, .btn:hover { transform: none; } }
+
+/* ═════════ LUXURY: сиёҳи амиқ + тиллоӣ (торик) · устухонӣ + тиллоӣ (равшан) ═════════ */
+:root, :root[data-theme="dark"] {
+  --bg: #0a0b0f; --panel: #12141b; --panel2: #181b24; --panel3: #22252f; --line: #2a2d38; --text: #f1ece1; --muted: #a9a295;
+  --acc: #e0bd6e; --acc-ink: #1a1406; --acc-soft: rgba(224,189,110,.10);
+  --ok: #86cfa0; --bad: #e79b8f; --warn: #e8c47a; --info: #9fbbe0; --violet: #c7a8e8;
+  --ok-bg: rgba(134,207,160,.10); --bad-bg: rgba(231,155,143,.10); --warn-bg: rgba(232,196,122,.10); --info-bg: rgba(159,187,224,.10);
+  --g1: #f7e7b4; --g2: #d9ae55; --g3: #a97a2c;
+  --gold: linear-gradient(135deg, #f7e7b4 0%, #e3bd67 38%, #c4933d 70%, #f0d58f 100%);
+  --grad: var(--gold);
+  --hair: rgba(224,189,110,.28);
+  --shadow: 0 18px 50px rgba(0,0,0,.45);
+}
+:root[data-theme="light"] {
+  --bg: #f7f3ea; --panel: #fffdf8; --panel2: #f6f0e3; --panel3: #ece4d2; --line: #e2d8c3; --text: #1f1a12; --muted: #6e6555;
+  --acc: #9c7426; --acc-ink: #ffffff; --acc-soft: rgba(156,116,38,.09);
+  --ok: #2f7a4f; --bad: #b2473a; --warn: #8d6512; --info: #355f96;
+  --ok-bg: #e8f3ea; --bad-bg: #f8e9e5; --warn-bg: #f7eedb; --info-bg: #e7eef8;
+  --g1: #e9cf8b; --g2: #b98a33; --g3: #8a611d;
+  --gold: linear-gradient(135deg, #ecd393 0%, #c99a42 45%, #9c7426 75%, #d8b66a 100%);
+  --grad: var(--gold); --hair: rgba(156,116,38,.30);
+  --shadow: 0 14px 40px rgba(60,45,15,.10);
+}
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+  --bg: #f7f3ea; --panel: #fffdf8; --panel2: #f6f0e3; --panel3: #ece4d2; --line: #e2d8c3; --text: #1f1a12; --muted: #6e6555;
+  --acc: #9c7426; --acc-ink: #ffffff; --acc-soft: rgba(156,116,38,.09);
+  --ok: #2f7a4f; --bad: #b2473a; --warn: #8d6512; --info: #355f96;
+  --ok-bg: #e8f3ea; --bad-bg: #f8e9e5; --warn-bg: #f7eedb; --info-bg: #e7eef8;
+  --g1: #e9cf8b; --g2: #b98a33; --g3: #8a611d;
+  --gold: linear-gradient(135deg, #ecd393 0%, #c99a42 45%, #9c7426 75%, #d8b66a 100%);
+  --grad: var(--gold); --hair: rgba(156,116,38,.30); --shadow: 0 14px 40px rgba(60,45,15,.10);
+} }
+body { letter-spacing: .005em; }
+body::before { background:
+  radial-gradient(900px 500px at 50% -12%, color-mix(in srgb, var(--g2) 14%, transparent), transparent 70%),
+  radial-gradient(600px 400px at 100% 100%, color-mix(in srgb, var(--g3) 8%, transparent), transparent 70%), var(--bg); }
+/* Сарлавҳа: шиша ва хати тиллоӣ */
+.top { background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--hair); box-shadow: 0 12px 34px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.04); }
+.logo { font-size: 17px; letter-spacing: .08em; text-transform: uppercase; }
+.logo b { background: var(--gold); -webkit-background-clip: text; background-clip: text; color: transparent; letter-spacing: .04em; }
+.nav a { letter-spacing: .02em; }
+.nav a.on { background: var(--acc-soft); box-shadow: inset 0 -2px 0 var(--acc); color: var(--text); }
+.avatar { background: var(--gold); color: #1a1406; text-shadow: none; box-shadow: 0 0 0 2px var(--hair); }
+.userpill { border-color: var(--hair); }
+/* Сарлавҳаҳо */
+.page > .row > h1, .page > h1 { background: linear-gradient(90deg, var(--text) 30%, var(--g2)); -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: 700; letter-spacing: .01em; }
+.kicker { letter-spacing: .14em; color: var(--acc); }
+h1 { font-weight: 700; }
+/* Кортҳо: ҳошияи нозуки тиллоӣ */
+.card, .wsx, .setside, .jweek, .jchart, .daycard {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 96%, #fff 4%), var(--panel)) padding-box,
+    linear-gradient(150deg, color-mix(in srgb, var(--g1) 55%, transparent), var(--line) 35%, var(--line) 65%, color-mix(in srgb, var(--g3) 50%, transparent)) border-box;
+  box-shadow: var(--shadow);
+}
+.daycard:hover { box-shadow: 0 20px 50px color-mix(in srgb, var(--g2) 18%, rgba(0,0,0,.35)); }
+.sample { background: var(--panel2); border-color: var(--hair); }
+/* Тугмаҳо: тиллоӣ */
+.btn { border-color: var(--line); }
+.btn:hover { border-color: var(--hair); }
+.btn.p { background: var(--gold); color: #1a1406; text-shadow: none; font-weight: 700; letter-spacing: .02em;
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--g2) 30%, transparent), inset 0 1px 0 rgba(255,255,255,.45); }
+.btn.p:hover { filter: brightness(1.05); box-shadow: 0 14px 32px color-mix(in srgb, var(--g2) 40%, transparent), inset 0 1px 0 rgba(255,255,255,.5); }
+/* Ҷадвалбандҳо */
+.tabs { border: 1px solid var(--hair); background: var(--panel); }
+.tabs button.on { background: var(--gold); color: #1a1406; text-shadow: none; box-shadow: 0 8px 20px color-mix(in srgb, var(--g2) 28%, transparent); }
+/* Масъала, маҷмӯа */
+.wsx-title .num { background: var(--gold); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.settab.on { background: var(--acc-soft); border-color: var(--acc); }
+.settab.on small { color: var(--acc); }
+.setitem.on { background: linear-gradient(90deg, color-mix(in srgb, var(--g2) 16%, transparent), transparent); box-shadow: inset 3px 0 0 var(--acc); }
+.setitem.on .n { border-color: var(--acc); color: var(--acc); }
+.progcard .bar > i, .bar > i { background: var(--gold); }
+.pico { background: var(--acc-soft); }
+.chip.acc { background: var(--acc-soft); border-color: var(--hair); color: var(--acc); }
+.wsx-exit { border-color: var(--hair); }
+/* Журнал */
+.jweek-h > span:first-child { background: var(--gold); -webkit-background-clip: text; background-clip: text; color: transparent; letter-spacing: .02em; }
+.jt thead tr:first-child th { letter-spacing: .03em; }
+.jt th.jname { color: var(--acc); }
+.jt th.jdate.today { background: var(--acc-soft); color: var(--acc); box-shadow: inset 0 2px 0 var(--acc); }
+.jt input[type=checkbox]:checked { background: var(--gold); }
+.jt input[type=checkbox]::after { border-color: #1a1406; }
+.jt tbody tr:hover td, .jt tbody tr:hover td.jname { background: color-mix(in srgb, var(--g2) 6%, var(--panel)); }
+.jsel:focus, .jbonus:focus { border-color: var(--acc); box-shadow: 0 0 0 3px var(--acc-soft); }
+.jav { box-shadow: 0 0 0 2px var(--panel), 0 0 0 3px var(--hair); }
+.jhelp { border-color: var(--hair); }
+.jchart .grid { stroke: color-mix(in srgb, var(--g2) 22%, var(--line)); }
+
+/* ═════════ БРЕНДИ ILMSPACE: кабуд #0665FF + сафед + норинҷӣ #FF7E2C ═════════ */
+:root, :root[data-theme="dark"] {
+  --brand: #0665ff; --brand2: #3d8bff; --orange: #ff7e2c;
+  --bg: #061128; --panel: #0c1a38; --panel2: #112347; --panel3: #193059; --line: #1f3766; --text: #eef4ff; --muted: #97aacd;
+  --acc: #4d94ff; --acc-ink: #ffffff; --acc-soft: rgba(77,148,255,.13);
+  --ok: #4fd18b; --bad: #ff7a72; --warn: #ffb15c; --info: #6fb0ff; --violet: #a99bff;
+  --ok-bg: rgba(79,209,139,.12); --bad-bg: rgba(255,122,114,.12); --warn-bg: rgba(255,177,92,.12); --info-bg: rgba(111,176,255,.12);
+  --g1: #0665ff; --g2: #3d8bff; --g3: #6fb0ff;
+  --gold: linear-gradient(135deg, #0665ff 0%, #2f82ff 60%, #5aa2ff 100%); --grad: var(--gold);
+  --hair: rgba(77,148,255,.30); --shadow: 0 16px 40px rgba(0,0,0,.35);
+}
+:root[data-theme="light"] {
+  --bg: #f2f6ff; --panel: #ffffff; --panel2: #f4f8ff; --panel3: #e6eefc; --line: #d8e3f8; --text: #0c1a33; --muted: #5a6a87;
+  --acc: #0665ff; --acc-ink: #ffffff; --acc-soft: rgba(6,101,255,.08);
+  --ok: #138a4f; --bad: #d0392f; --warn: #c25e00; --info: #0b5bd3;
+  --ok-bg: #e5f6ec; --bad-bg: #fdebe9; --warn-bg: #fff1e4; --info-bg: #e7f0ff;
+  --hair: rgba(6,101,255,.22); --shadow: 0 12px 34px rgba(6,60,160,.10);
+}
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) {
+  --bg: #f2f6ff; --panel: #ffffff; --panel2: #f4f8ff; --panel3: #e6eefc; --line: #d8e3f8; --text: #0c1a33; --muted: #5a6a87;
+  --acc: #0665ff; --acc-ink: #ffffff; --acc-soft: rgba(6,101,255,.08);
+  --ok: #138a4f; --bad: #d0392f; --warn: #c25e00; --info: #0b5bd3;
+  --ok-bg: #e5f6ec; --bad-bg: #fdebe9; --warn-bg: #fff1e4; --info-bg: #e7f0ff;
+  --hair: rgba(6,101,255,.22); --shadow: 0 12px 34px rgba(6,60,160,.10);
+} }
+:root { --c-class: #6b8cff; --c-home: #2fa8ff; --c-extra: #19b8c9; --c-exam: #ff7e2c; --c-amber: #ff7e2c; }
+body::before { background: radial-gradient(900px 480px at 50% -14%, color-mix(in srgb, var(--brand) 18%, transparent), transparent 70%), var(--bg); }
+/* Сарлавҳа — кабуди бренд, мисли логотип */
+.top { background: var(--brand); border: 0; box-shadow: 0 12px 30px rgba(6,101,255,.30); color: #fff; }
+.top .logo { display: inline-flex; align-items: center; gap: 10px; color: #fff; text-transform: none; letter-spacing: 0; }
+.top .logo svg { width: 34px; height: 34px; flex: none; }
+.top .logo .lw { font-weight: 800; font-size: 17px; letter-spacing: .16em; }
+.top .logo .lw b { background: none; color: #fff; -webkit-text-fill-color: #fff; font-weight: 400; }
+.top .logo .lsub { font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 7px; background: rgba(255,255,255,.16); letter-spacing: .04em; }
+.top .nav a { color: rgba(255,255,255,.82); }
+.top .nav a:hover { color: #fff; background: rgba(255,255,255,.12); }
+.top .nav a.on { color: #fff; background: rgba(255,255,255,.18); box-shadow: inset 0 -3px 0 var(--orange); }
+.top .userpill { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.25); color: #fff; }
+.top .userpill small { color: rgba(255,255,255,.75); }
+.top .avatar { background: #fff; color: var(--brand); box-shadow: none; }
+.top > a:last-child, .top button { color: #fff; }
+.top .btn { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.25); color: #fff; }
+/* Сарлавҳаҳо ва кортҳо */
+.page > .row > h1, .page > h1 { background: none; -webkit-text-fill-color: currentColor; color: var(--text); }
+.kicker { color: var(--acc); letter-spacing: .1em; }
+.card, .wsx, .setside, .jweek, .jchart, .daycard { background: var(--panel); border: 1px solid var(--line); box-shadow: var(--shadow); }
+.daycard:hover { border-color: var(--acc); box-shadow: 0 18px 44px rgba(6,101,255,.18); }
+.btn.p { background: var(--brand); color: #fff; box-shadow: 0 8px 22px rgba(6,101,255,.32); }
+.btn.p:hover { background: #0558e0; filter: none; }
+.tabs { border: 1px solid var(--line); background: var(--panel); }
+.tabs button.on { background: var(--brand); color: #fff; box-shadow: 0 8px 20px rgba(6,101,255,.30); }
+.wsx-title .num { background: none; -webkit-text-fill-color: var(--orange); color: var(--orange); }
+.setitem.on { background: var(--acc-soft); box-shadow: inset 3px 0 0 var(--orange); }
+.setitem.on .n { border-color: var(--acc); color: var(--acc); }
+.settab.on { background: var(--acc-soft); border-color: var(--acc); }
+.progcard .bar > i, .bar > i { background: linear-gradient(90deg, var(--brand), var(--brand2)); }
+.chip.acc { background: var(--acc-soft); border-color: var(--hair); color: var(--acc); }
+.jweek-h > span:first-child { background: none; -webkit-text-fill-color: var(--text); color: var(--text); }
+.jt th.jname { color: var(--muted); }
+.jt th.jdate.today { background: var(--acc-soft); color: var(--acc); box-shadow: inset 0 3px 0 var(--orange); }
+.jt input[type=checkbox]:checked { background: var(--brand); border-color: var(--brand); }
+.jt input[type=checkbox]::after { border-color: #fff; }
+.jav { box-shadow: none; }
