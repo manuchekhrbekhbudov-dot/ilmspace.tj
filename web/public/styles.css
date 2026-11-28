@@ -605,3 +605,8 @@ a.chip:hover { text-decoration: none; filter: brightness(1.1); }
   .spgrid { grid-template-columns: 1fr; }
   .tset { min-width: 0; flex: 1; }
 }
+/* Пароли нави шогирд — калон ва дар мобайни экран */
+.pwcard { display: grid; gap: 10px; margin: 4px 0 14px; }
+.pwrow { display: flex; align-items: center; gap: 16px; padding: 14px 18px; border-radius: 14px; border: 2px solid var(--acc); background: var(--acc-soft); }
+.pwrow span { min-width: 70px; color: var(--muted); font-size: 16px; }
+.pwrow b { font-size: 30px; letter-spacing: .04em; word-break: break-all; }

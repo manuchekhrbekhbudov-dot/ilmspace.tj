@@ -172,7 +172,14 @@ function StudentsTab({ g, reload }) {
         ${active.filter(m => m.exam_blocked?.length).flatMap(m => m.exam_blocked.map(b => html`<div class="row" style="margin-top:6px"><b>${m.name}</b><span class="small">${b.title}</span><div class="spacer"></div>
           <button class="btn sm p" onClick=${() => act(() => api(`/api/lessons/${b.lesson_id}/unblock`, { method: 'POST', body: { user_id: m.id } }), `Блоки ${m.name} бардошта шуд.`)}>Блокро бардор</button></div>`))}</div>`}
       ${!active.length ? html`<div class="muted">Ҳанӯз шогирд нест.</div>` : html`<table class="t"><tbody>${active.map(m => html`<tr><td><b>${m.name}</b> <span class="muted mono small">${m.login}</span>${(m.exams || []).map(e => html` <span class=${'v ' + (e.blocked ? 'v-bad' : 'v-warn')} title=${e.title}>${e.blocked ? '⛔ Блок' : `⚠ ${e.count}/3`} · ${e.title}</span>`)}</td><td style="text-align:right;white-space:nowrap"><a class="btn sm" href=${`#/g/${g.group.id}/s/${m.id}`}>Пешрафт</a> <button class="btn sm" onClick=${() => resetPw(m)}>Пароли нав</button> <button class="btn sm danger" onClick=${() => confirm(`${m.name}-ро аз гурӯҳ хориҷ кунем?`) && act(() => api(`/api/groups/${g.group.id}/members/${m.id}`, { method: 'DELETE' }))}>Хориҷ кун</button></td></tr>`)}</tbody></table>`}
-      ${pw && html`<div class="notice ok" style="margin-top:10px" role="status">Пароли нав барои <b>${pw.name}</b>: логин <b class="mono">${pw.login}</b>, парол <b class="mono" style="font-size:18px">${pw.password}</b><div class="small">Ба шогирд гӯед. Ӯ баъд дар «👤 Ҳисоби ман» пароли худро гузошта метавонад.</div></div>`}
+      ${pw && html`<${Modal} title=${'Пароли нав: ' + pw.name} onClose=${() => setPw(null)}>
+        <div class="pwcard" role="status" data-testid="newpw">
+          <div class="pwrow"><span>Логин</span><b class="mono">${pw.login}</b></div>
+          <div class="pwrow"><span>Парол</span><b class="mono">${pw.password}</b></div>
+        </div>
+        <p class="muted">Инро ба шогирд гӯед ё нависед. Пароли кӯҳна дигар кор намекунад. Шогирд баъд дар «👤 Ҳисоби ман» пароли худро гузошта метавонад.</p>
+        <div class="row"><button class="btn p" onClick=${() => { navigator.clipboard?.writeText(`Логин: ${pw.login}\nПарол: ${pw.password}`).then(() => toast('Нусха бардошта шуд.'), () => {}); }}>Нусха бардор</button><button class="btn" onClick=${() => setPw(null)}>Пӯшидан</button></div>
+      <//>`}
       <div class="sep"></div>
       <div class="row"><a class="btn" href=${`/api/groups/${g.group.id}/export.csv`} download>⬇ Натиҷаҳо ба Excel</a><div class="spacer"></div>
         <button class="btn sm danger" onClick=${async () => { if (prompt(`Барои нест кардан номи гурӯҳро нависед: ${g.group.name}`) !== g.group.name) return; try { await api('/api/groups/' + g.group.id, { method: 'DELETE' }); toast('Гурӯҳ нест карда шуд.'); location.hash = '#/'; } catch (e) { toast(e.message); } }}>Гурӯҳро нест кун</button></div>
