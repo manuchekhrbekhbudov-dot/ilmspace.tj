@@ -934,6 +934,8 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     else {
       const sc = Number(body.score); if (!Number.isInteger(sc) || sc < 0 || sc > 5) throw bad('Хол бояд аз 0 то 5 бошад.');
       Q.run('INSERT INTO day_scores (lesson_id, user_id, score) VALUES (?,?,?) ON CONFLICT(lesson_id, user_id) DO UPDATE SET score=excluded.score', l.id, uid, sc);
+      // Шогирде, ки хол гирифт, дар дарс буд — агар ҳозирӣ ҳанӯз қайд нашуда бошад, «омад» мегузорем
+      Q.run("INSERT OR IGNORE INTO attendance (lesson_id, user_id, status) VALUES (?,?,'present')", l.id, uid);
     }
     journalEvent(l.group_id); return { ok: true };
   });

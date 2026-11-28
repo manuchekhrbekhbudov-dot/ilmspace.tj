@@ -18,7 +18,10 @@ export function Journal({ gid }) {
   if (loading) return html`<${Loading} />`;
   if (error && !data) return html`<div class="page"><${ErrorBox} error=${error} retry=${reload} /></div>`;
   const T = data.role === 'teacher';
-  const act = async (fn) => { try { await fn(); reload(true); } catch (e) { toast(e.message); } };
+  const act = async (fn, what) => {
+    try { await fn(); reload(true); if (what) toast(`✓ ${what} сабт шуд. Иваз кардан мумкин аст — қимати дигарро интихоб кунед.`); }
+    catch (e) { toast('Сабт нашуд: ' + e.message); reload(true); }
+  };
   const lastGraded = [...data.weeks].reverse().find(w => w.graded) || data.weeks[0];
   const isOpen = w => open[w.week] ?? w.week === lastGraded?.week;
   return html`<div class=${gid ? '' : 'page'}>
@@ -40,7 +43,7 @@ export function Journal({ gid }) {
 
 function WeekTable({ w, data, T, act, onComment, onInfo, gid }) {
   const wi = data.weeks.indexOf(w);
-  const allPresent = d => data.students.length > 0 && data.students.every(s => s.weeks[wi].days.find(x => x.id === d.id)?.att);
+  const allPresent = d => data.students.length > 0 && data.students.every(s => ['present', 'late'].includes(s.weeks[wi].days.find(x => x.id === d.id)?.att));
   return html`<div class="jwrap"><table class="jt">
     <thead>
       <tr><th rowspan="2" class="jname">Донишҷӯён</th>
@@ -59,7 +62,7 @@ function WeekTable({ w, data, T, act, onComment, onInfo, gid }) {
         </td>
         <td class="jsc">${T
           ? html`<select class=${'jsel' + (c.auto ? ' auto' : '')} aria-label=${'Хол: ' + s.name} value=${c.score ?? ''} title=${c.auto ? 'Аз натиҷаи имтиҳон' : ''}
-              onChange=${e => act(() => api(`/api/lessons/${c.id}/score`, { method: 'PUT', body: { user_id: s.id, score: e.target.value === '' ? null : Number(e.target.value) } }))}>
+              onChange=${e => act(() => api(`/api/lessons/${c.id}/score`, { method: 'PUT', body: { user_id: s.id, score: e.target.value === '' ? null : Number(e.target.value) } }), e.target.value === '' ? 'Хол тоза шуд —' : `Холи ${e.target.value} барои ${s.name}`)}>
               <option value="">–</option>${[0, 1, 2, 3, 4, 5].map(n => html`<option value=${n}>${n}</option>`)}</select>`
           : html`<span class="jscv">${c.score ?? '–'}</span>`}</td>`)}
       <td class="jsc">${T ? html`<input class="jbonus" type="number" min="-30" max="30" value=${sw.bonus || ''} placeholder="0" aria-label=${'Бонус: ' + s.name}
