@@ -6,7 +6,8 @@ import { RunResult, SubmissionResult } from './result.js';
 export function Workspace({ user, pid, lessonId, exam, num, nav, exitHref }) {
   const [problem, setProblem] = useState(() => store.get(`prob:${pid}`));
   const [loadErr, setLoadErr] = useState(null);
-  const [code, setCode] = useState(null);
+  const [code, setCode] = useState(null);   // танҳо матни боршуда; ҳар ҳарфи навишташуда дар st.current.code (бе рендер)
+  const [ver, setVer] = useState(0);
   const [stdin, setStdin] = useState('');
   const [save, setSave] = useState('saved');
   const [conflict, setConflict] = useState(null);
@@ -67,7 +68,7 @@ export function Workspace({ user, pid, lessonId, exam, num, nav, exitHref }) {
   function adopt(c, i, rev, dirty) {
     Object.assign(st.current, { code: c, stdin: i, baseRev: rev, dirty });
     store.set(key, { code: c, stdin: i, baseRev: rev, dirty });
-    setCode(c); setStdin(i);
+    setCode(c); setVer(v => v + 1); setStdin(i);
     if (!dirty) setSave('saved');
   }
   const persistLocal = () => store.set(key, { code: st.current.code, stdin: st.current.stdin, baseRev: st.current.baseRev, dirty: st.current.dirty });
@@ -88,7 +89,7 @@ export function Workspace({ user, pid, lessonId, exam, num, nav, exitHref }) {
     }
   }
   const onCode = useCallback(c => {
-    st.current.code = c; st.current.dirty = true; persistLocal(); setCode(c);
+    st.current.code = c; st.current.dirty = true; persistLocal();
     if (save === 'conflict') return;
     setSave(navigator.onLine ? 'saving' : 'local');
     clearTimeout(st.current.timer); st.current.timer = setTimeout(() => doSave(), 900);
@@ -199,7 +200,7 @@ export function Workspace({ user, pid, lessonId, exam, num, nav, exitHref }) {
         <button class="btn icon-btn" title=${full ? 'Хурд кун (Esc)' : 'Муҳаррири калон'} aria-label="Муҳаррири калон" onClick=${() => setFull(f => !f)}>⛶</button>
         ${full && html`${runBtn('')}${sendBtn('')}`}
       </div>
-      <div class="edwrap"><${CodeEditor} value=${code} onChange=${onCode} fontSize=${fs} onReady=${v => (view.current = v)} /></div>
+      <div class="edwrap"><${CodeEditor} value=${code} version=${ver} onChange=${onCode} fontSize=${fs} onReady=${v => (view.current = v)} /></div>
     </div>
     <div class="wsx-actions">
       ${sendBtn('big')}${runBtn('big ghostline')}
@@ -221,7 +222,7 @@ export function Workspace({ user, pid, lessonId, exam, num, nav, exitHref }) {
         <${RunResult} r=${run} expected=${expected} onLine=${jump} />
       </div>`}
       ${bottom === 'attempt' && (sel ? html`<div class="col">
-          <${SubmissionResult} s=${sel} onLine=${jump} currentCode=${code} />
+          <${SubmissionResult} s=${sel} onLine=${jump} currentCode=${st.current.code} />
           ${sel.comments?.length > 0 && html`<div><h3>Шарҳи устод ба кӯшиши №${sel.number}</h3><${CodeView} code=${sel.code} comments=${sel.comments} /></div>`}
           ${!sel.comments?.length && html`<details><summary class="small muted" style="cursor:pointer">Коди ҳамин кӯшиш</summary><${CodeView} code=${sel.code} /></details>`}
         </div>` : html`<div class="muted">Ҳанӯз кӯшиш нест. Вақте омода шудед, «Барои санҷиш фирист»-ро пахш кунед.</div>`)}

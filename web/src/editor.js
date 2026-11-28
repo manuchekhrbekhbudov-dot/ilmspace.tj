@@ -1,5 +1,5 @@
 import { EditorView, basicSetup } from 'codemirror';
-import { EditorState, Compartment } from '@codemirror/state';
+import { EditorState, Compartment, Annotation } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import { indentWithTab } from '@codemirror/commands';
 import { openSearchPanel } from '@codemirror/search';
@@ -23,9 +23,13 @@ const base = EditorView.theme({
   '.cm-content': { paddingBottom: '40px' },
 });
 
-/** Муҳаррири C++ (CodeMirror 6). onReady(view) барои амалҳои беруна (ҷустуҷӯ, гузариш ба сатр). */
-export function CodeEditor({ value, onChange, fontSize = 15, readOnly = false, onReady, label = 'Муҳаррири коди C++' }) {
-  const host = useRef(), view = useRef(), cb = useRef(onChange);
+// Тағйироте, ки аз берун ба муҳаррир гузошта мешавад (боркунӣ, ҳалли ихтилоф) — ба onChange бар намегардад
+const External = Annotation.define();
+
+/** Муҳаррири C++ (CodeMirror 6). onReady(view) барои амалҳои беруна (ҷустуҷӯ, гузариш ба сатр).
+ *  version: агар дода шавад, матни value танҳо ҳангоми иваз шудани version ба муҳаррир гузошта мешавад. */
+export function CodeEditor({ value, version, onChange, fontSize = 15, readOnly = false, onReady, label = 'Муҳаррири коди C++' }) {
+  const host = useRef(), view = useRef(), cb = useRef(onChange), sent = useRef([]);
   cb.current = onChange;
   const themeC = useRef(new Compartment()), sizeC = useRef(new Compartment()), roC = useRef(new Compartment());
   useEffect(() => {
@@ -38,7 +42,11 @@ export function CodeEditor({ value, onChange, fontSize = 15, readOnly = false, o
           themeC.current.of(isDark() ? oneDark : lightTheme),
           sizeC.current.of(EditorView.theme({ '&': { fontSize: fontSize + 'px' } })),
           roC.current.of(EditorState.readOnly.of(readOnly)),
-          EditorView.updateListener.of(u => { if (u.docChanged) cb.current?.(u.state.doc.toString()); }),
+          EditorView.updateListener.of(u => {
+            if (!u.docChanged || u.transactions.some(t => t.annotation(External))) return;
+            const text = u.state.doc.toString(); const a = sent.current; a.push(text); if (a.length > 50) a.shift();
+            cb.current?.(text);
+          }),
           EditorView.contentAttributes.of({ 'aria-label': label }),
         ],
       }),
@@ -50,10 +58,13 @@ export function CodeEditor({ value, onChange, fontSize = 15, readOnly = false, o
     return () => { mo.disconnect(); if (window.__editor === v) window.__editor = null; v.destroy(); };
   }, []);
   useEffect(() => { view.current?.dispatch({ effects: sizeC.current.reconfigure(EditorView.theme({ '&': { fontSize: fontSize + 'px' } })) }); }, [fontSize]);
+  // Матни беруна. Акси садои ҳарфҳои худи муҳаррир (ҳатто кӯҳнаи он) нодида гирифта мешавад: пештар дар компютери суст
+  // рендери дерина матнро ба ҳолати пешина бармегардонд — ҳарфҳо гум мешуданд ва саҳифа «ях мекард».
   useEffect(() => {
     const v = view.current; if (!v) return;
-    if (value !== v.state.doc.toString()) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: value } });
-  }, [value]);
+    if (version === undefined && sent.current.includes(value)) return;
+    if (value !== v.state.doc.toString()) v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: value }, annotations: External.of(true) });
+  }, version === undefined ? [value] : [version]);
   return html`<div ref=${host} style="height:100%"></div>`;
 }
 export function search(view) { if (view) { view.focus(); openSearchPanel(view); } }
