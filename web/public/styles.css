@@ -954,3 +954,7 @@ body::before { background: radial-gradient(900px 480px at 50% -14%, color-mix(in
 .jt input[type=checkbox]:checked { background: var(--brand); border-color: var(--brand); }
 .jt input[type=checkbox]::after { border-color: #fff; }
 .jav { box-shadow: none; }
+/* Рангҳои маҷмӯаҳо дар нақшаи курс — мувофиқи бренд (кабуд, осмонӣ, фирӯзаӣ, норинҷӣ) */
+:root, :root[data-theme="dark"] { --c-class: #6b8cff; --c-home: #3aa9ff; --c-extra: #2cc3cf; --c-exam: #ff8f45; --c-amber: #ff8f45; }
+:root[data-theme="light"] { --c-class: #2f55e0; --c-home: #0a73d9; --c-extra: #0b8794; --c-exam: #d35f12; --c-amber: #d35f12; }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --c-class: #2f55e0; --c-home: #0a73d9; --c-extra: #0b8794; --c-exam: #d35f12; --c-amber: #d35f12; } }
