@@ -6,6 +6,7 @@ import { LiveLesson, ProjectorScreen } from './live.js';
 import { ProblemEditor, TemplateEditor } from './authoring.js';
 import { CourseMap, SetPage, VIOL } from './course.js';
 import { Journal, TeacherJournals } from './journal.js';
+import { LANGS, getLang, setLang, startI18n } from './i18n.js';
 
 function useHash() {
   const [h, setH] = useState(location.hash || '#/');
@@ -34,6 +35,8 @@ function BlockedBadge() {
 }
 
 // Нишони ILMSPACE: бом, чорчӯба ва «iLM» бо нуқтаи норинҷӣ
+// Интихоби забон: ТҶ / RU / EN
+const LangSwitch = () => html`<div class="langsw" role="group" aria-label="Забон / Язык / Language" data-noi18n>${LANGS.map(([k, short, full]) => html`<button class=${'lang' + (getLang() === k ? ' on' : '')} aria-pressed=${getLang() === k ? 'true' : 'false'} title=${full} onClick=${() => getLang() !== k && setLang(k)}>${short}</button>`)}</div>`;
 const LogoMark = () => html`<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M14 20 L32 8 L50 20" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
   <rect x="13" y="25" width="38" height="30" rx="6" fill="none" stroke="#fff" stroke-width="3.5"/>
   <path d="M22.5 33 a3 3 0 0 1 0 6 z" fill="#ff7e2c"/><rect x="21" y="40" width="3.5" height="9" fill="#fff"/>
@@ -54,6 +57,7 @@ function Header({ user, hash, onLogout, judge, storage }) {
     ${user.role === 'teacher' && storage?.mode === 'postgres' && storage.lastError && html`<span class="net" title=${storage.lastError}>Нусха ба база нарафт</span>`}
     ${user.role === 'teacher' && judge?.ok && judge.warning && html`<span class="net" title=${judge.warning}>Санҷандаи маҳаллӣ бе ҷудокунӣ</span>`}
     ${user.role === 'teacher' && html`<${BlockedBadge} />`}
+    <${LangSwitch} />
     <button class="btn ghost icon-btn" onClick=${toggleTheme} title="Мавзӯи торик/равшан" aria-label="Мавзӯи торик/равшан">◐</button>
     <a class="userpill" href="#/profile" title="Ҳисоби ман: ном, логин ва парол"><span class="avatar" aria-hidden="true">${(user.name || '?').trim().charAt(0).toUpperCase()}</span><span class="uinfo"><b class="uname">${user.name}</b><small>${user.role === 'teacher' ? 'устод' : 'шогирд'} · ${user.login}</small></span></a>
     <button class="btn ghost sm" onClick=${onLogout}>Баромад</button>
@@ -77,6 +81,7 @@ function Auth({ onAuth }) {
     <div class="card" style="width:100%;max-width:420px;padding:26px">
       <div class="logo" style="font-size:22px">ILMSPACE <b>CodeLab</b></div>
       <p class="muted" style="margin:6px 0 18px">Синфхонаи онлайни C++ барои маркази омӯзишии ilmspace.tj</p>
+      <div style="margin:-6px 0 16px"><${LangSwitch} /></div>
       <div class="tabs" style="margin:0 0 16px;position:static;padding:0">
         <button class=${mode === 'login' ? 'on' : ''} onClick=${() => setMode('login')}>Ворид шав</button>
         <button class=${mode === 'register' ? 'on' : ''} onClick=${() => setMode('register')}>Сабти ном (шогирд)</button>
@@ -194,5 +199,6 @@ function App() {
   return html`<${Header} user=${me} hash=${hash} onLogout=${logout} judge=${judge} storage=${storage} />${me.weak_pw ? html`<${WeakPassword} me=${me} onSaved=${u => setMe(u)} />` : ''}${page}`;
 }
 
+startI18n();
 render(html`<${App} />`, document.getElementById('app'));
 if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));

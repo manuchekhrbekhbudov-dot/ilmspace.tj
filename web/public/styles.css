@@ -965,3 +965,12 @@ body::before { background: radial-gradient(900px 480px at 50% -14%, color-mix(in
 .jgroup:hover { border-color: var(--acc); }
 .jgroup.on { background: var(--brand, var(--acc)); border-color: transparent; color: #fff; box-shadow: 0 8px 22px rgba(6,101,255,.30); }
 .jgroup.on small { color: rgba(255,255,255,.8); }
+/* Интихоби забон */
+.langsw { display: inline-flex; gap: 2px; padding: 3px; border-radius: 11px; background: var(--panel2); border: 1px solid var(--line); }
+.langsw .lang { all: unset; cursor: pointer; padding: 5px 10px; border-radius: 8px; font-weight: 800; font-size: 13px; letter-spacing: .04em; color: var(--muted); }
+.langsw .lang:hover { color: var(--text); }
+.langsw .lang.on { background: var(--brand, var(--acc)); color: #fff; }
+.langsw .lang:focus-visible { outline: 2px solid var(--acc); }
+.top .langsw { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.25); }
+.top .langsw .lang { color: rgba(255,255,255,.8); }
+.top .langsw .lang.on { background: #fff; color: var(--brand); }
