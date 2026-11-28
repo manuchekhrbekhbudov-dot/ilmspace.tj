@@ -6,6 +6,14 @@ const SET = { class: 'Синфӣ', home: 'Хонагӣ', extra: 'Иловагӣ'
 const SET_LONG = { class: 'Вазифаи синфӣ', home: 'Вазифаи хонагӣ', extra: 'Вазифаи иловагӣ' };
 const EXAM = { class: 'Имтиҳон A', home: 'Имтиҳон B', extra: 'Имтиҳони мураккаб' };
 const setName = (kind, k, long) => kind === 'exam' ? EXAM[k] : (long ? SET_LONG : SET)[k];
+// Хол: ҳар масъала 10 хол; фоиз = ҳалшуда / ҳама
+export const pct = (solved, total) => (total ? Math.round((100 * solved) / total) : 0);
+const pctColor = p => (p >= 80 ? 'var(--ok)' : p >= 50 ? 'var(--warn)' : 'var(--bad)');
+export function ScoreRing({ solved, total, size = 170 }) {
+  const p = pct(solved, total);
+  return html`<div class="scorering" style=${`--p:${p};--c:${pctColor(p)};--sz:${size}px`} role="img" aria-label=${`${p} фоиз, ${solved * 10} аз ${total * 10} хол`}>
+    <div class="sr-in"><b>${p}%</b><small>${solved * 10} / ${total * 10} хол</small></div></div>`;
+}
 const STATE = {
   live: ['● Дарс меравад', 'st-live'], today: ['Имрӯз', 'st-today'], done: ['Иҷро шуд', 'st-done'],
   progress: ['Дар ҷараён', 'st-progress'], planned: ['Кушода', 'st-open'], locked: ['Пӯшида', 'st-locked'], closed: ['Пӯшида', 'st-locked'],
@@ -65,6 +73,8 @@ export function CourseMap({ gid, embedded }) {
         </div>
         <div class="daybottom">
           <div class="chips">${['class', 'home', 'extra'].map(k => html`<${SetChip} k=${k} s=${d.sets[k]} role=${role} kind=${d.kind} />`)}
+            ${role === 'student' && !d.locked && (() => { const sv = d.sets.class.solved + d.sets.home.solved + d.sets.extra.solved, tt = d.sets.class.total + d.sets.home.total + d.sets.extra.total; const p = pct(sv, tt);
+              return tt ? html`<span class="chip pctchip" style=${`--c:${pctColor(p)}`} title=${`${sv * 10} / ${tt * 10} хол`}>${p}%</span>` : ''; })()}
             ${d.exam?.blocked > 0 && html`<span class="chip bad">⛔ ${d.exam.blocked} блок</span>`}
             ${d.exam?.warned > 0 && html`<span class="chip warn">⚠ ${d.exam.warned} вайронкунӣ</span>`}</div>
           <span class="chev"><${Icon} name="chevron" /></span>
@@ -95,6 +105,8 @@ function DayPanel({ d, role, group, onClose, onChanged }) {
       : loading ? html`<${Loading} />` : error ? html`<${ErrorBox} error=${error} retry=${reload} />` : html`<div class="col" style="margin-top:14px">
       ${role === 'teacher' && html`<div class="row"><a class="btn" href=${'#/live/' + d.id}>Дарси зинда</a><a class="btn" href=${'#/report/' + d.id}>Ҳисобот</a><button class="btn" onClick=${() => setEdit(true)}>Маҷмӯаҳоро таҳрир кун</button>
         ${d.state !== 'live' && html`<button class="btn" title="Масъалаҳои ин рӯзро аз нақшаи курс аз нав мегузорад" onClick=${replan}>↺ Аз нақшаи курс</button>`}</div>`}
+      ${role === 'student' && (() => { const all = ['class', 'home', 'extra'].flatMap(k => data.sets[k]); const sv = all.filter(p => p.solved).length; const p = pct(sv, all.length);
+        return all.length ? html`<div class="dayscore" style=${`--c:${pctColor(p)}`}><b>${p}%</b><div><div><b>${sv * 10} / ${all.length * 10}</b> хол</div><div class="small muted">Ҳал шуд ${sv} аз ${all.length} масъала · ҳар масъала 10 хол</div></div></div>` : ''; })()}
       ${data.exam && html`<div class="notice warn"><b>Имтиҳон.</b> Нусхабардорӣ (copy/paste) ва рафтан ба равзанаи дигар манъ аст. Пас аз 3 вайронкунӣ шумо блок мешавед. Ҳозир: ${data.exam.count}/3.</div>`}
       ${['class', 'home', 'extra'].map(k => { const ps = data.sets[k]; if (!ps.length) return null; const sv = ps.filter(p => p.solved).length;
         return html`<a class="card setcard" href=${`#/set/${d.id}/${k}`}>
@@ -133,7 +145,7 @@ function ExamMonitor({ lid }) {
   return html`<div class="card exammon"><h3>Назорати имтиҳон</h3>
     <div class="small muted" style="margin-bottom:6px">Ворид шуданд: <b>${inExam}</b> аз ${data.length} · Блок: <b>${blocked}</b></div>
     ${!data.length ? html`<div class="muted small">Дар гурӯҳ шогирд нест.</div>` : data.map(r => { const [t, c] = st(r); return html`<div class="emrow">
-      <b class="emname">${r.user.name}</b><span class=${'v ' + c}>${t}</span>
+      <b class="emname">${r.user.name}</b><span class="emscore" style=${`--c:${pctColor(r.percent)}`} title=${`Ҳал шуд ${r.solved} аз ${r.total}`}>${r.points}/${r.max} хол · ${r.percent}%</span><span class=${'v ' + c}>${t}</span>
       <span class="small muted">${r.last_type ? VIOL[r.last_type]?.[0] || r.last_type : ''}</span>
       ${r.blocked ? html`<button class="btn sm p" onClick=${() => unblock(r.user.id, 'Блок бардошта шуд — шогирд боз ворид мешавад.')}>Блокро бардор</button>`
         : r.finished_at ? html`<button class="btn sm" onClick=${() => unblock(r.user.id, 'Имтиҳон барои шогирд боз кушода шуд.')}>Боз кушо</button>` : ''}
@@ -272,11 +284,16 @@ export function SetPage({ user, lid, kind, idx }) {
     return html`<${ExamGate} L=${L} onAccept=${accept} busy=${busy} err=${err} />`;
   }
   if (isExam && ex.finished) {
-    const sv = all.filter(p => p.solved).length;
-    return html`<div class="page"><div class="examdone"><div class="eg-ico">🏁</div><h1>Шумо имтиҳонро тамом кардед</h1>
-      <p class="eg-lead">Ҳал шуд: <b>${sv}</b> аз ${all.length} масъала.</p>
-      <div class="examdone-list">${all.map(p => html`<div class=${'setitem' + (p.solved ? ' solved' : '')}><span class="n">${p.solved ? '✓' : '–'}</span><span class="t">${p.title}</span></div>`)}</div>
-      <a class="btn p lg" href="#/course">← Ба нақшаи курс</a></div></div>`;
+    const rows = ['class', 'home', 'extra'].flatMap(k => (data.sets[k] || []).map(p => ({ ...p, k })));
+    const sv = rows.filter(p => p.solved).length;
+    return html`<div class="page"><div class="examdone">
+      <h1>Натиҷаи имтиҳон</h1>
+      <div class="muted" style="text-align:center">${L.title}</div>
+      <${ScoreRing} solved=${sv} total=${rows.length} />
+      <p class="eg-lead" style="text-align:center">Ҳал шуд <b>${sv}</b> аз ${rows.length} масъала · ҳар масъала <b>10 хол</b></p>
+      <div class="examdone-list">${rows.map((p, j) => html`<div class=${'resrow' + (p.solved ? ' ok' : '')}>
+        <span class="n">${p.solved ? '✓' : j + 1}</span><span class="t">${p.title}</span><span class="small muted">${{ class: 'A', home: 'B', extra: 'Мураккаб' }[p.k]}</span><b class="pts">${p.solved ? '+10' : '0'}</b></div>`)}</div>
+      <div style="text-align:center"><a class="btn p lg" href="#/course">← Ба нақшаи курс</a></div></div></div>`;
   }
   const ps = data.sets[kind] || [];
   if (!ps.length) return html`<div class="page"><${Empty} title="Дар ин маҷмӯа масъала нест"><a href="#/course">Ба нақшаи курс</a><//></div>`;
@@ -295,6 +312,7 @@ export function SetPage({ user, lid, kind, idx }) {
       <div class="progcard">
         <div class="row"><span class="pico" aria-hidden="true">🔥</span><b>Пешрафт</b><div class="spacer"></div><b class="pnum">${sv}/${ps.length}</b></div>
         <div class="bar"><i style=${`width:${(100 * sv) / ps.length}%`}></i></div>
+        <div class="ppts"><b>${sv * 10} / ${ps.length * 10}</b> хол · <b style=${`color:${pctColor(pct(sv, ps.length))}`}>${pct(sv, ps.length)}%</b></div>
         ${sv === ps.length ? html`<div class="pdone">🎉 Ҳамаи масъалаҳо ҳал шуданд!</div>` : ''}
       </div>
       <div class="listcard">
@@ -302,7 +320,7 @@ export function SetPage({ user, lid, kind, idx }) {
         <nav class="setlist">${ps.map((p, j) => html`<a href=${href(kind, j)} class=${'setitem' + (j === i ? ' on' : '') + (p.solved ? ' solved' : '')} aria-current=${j === i ? 'page' : undefined}>
           <span class="n">${j + 1}</span><span class="t">${p.title}</span><span class=${'ok' + (p.solved ? '' : ' no')} aria-label=${p.solved ? 'ҳал шуд' : 'ҳал нашуд'}>${p.solved ? '✓' : ''}</span></a>`)}</nav>
       </div>
-      ${isExam && html`<button class="btn finishbtn" onClick=${() => setAsk(true)}>🏁 Имтиҳонро тамом кардам</button>`}
+      ${isExam && html`<button class="btn finishbtn" onClick=${() => setAsk(true)}>✓ Имтиҳонро тамом кардам</button>`}
     </aside>
     <main class="setmain">
       <${Workspace} key=${ps[i].id} user=${user} pid=${ps[i].id} lessonId=${Number(lid)} exam=${isExam} num=${i + 1}
@@ -312,7 +330,7 @@ export function SetPage({ user, lid, kind, idx }) {
       <p class="ew-why">Барои идома додан тугмаро пахш кунед.</p><button class="btn p lg" onClick=${goFull}>Ба экрани пурра баргард</button></div></div>`}
     ${warn && html`<${ExamWarn} w=${warn} onClose=${() => { setWarn(null); goFull(); }} />`}
     ${ask && html`<${Modal} title="Имтиҳонро тамом мекунед?" onClose=${() => setAsk(false)}>
-      <p>Ҳал шуд: <b>${all.filter(p => p.solved).length}</b> аз ${all.length} масъала.</p>
+      <p>Ҳал шуд: <b>${all.filter(p => p.solved).length}</b> аз ${all.length} масъала — <b>${all.filter(p => p.solved).length * 10} / ${all.length * 10} хол (${pct(all.filter(p => p.solved).length, all.length)}%)</b>.</p>
       <p>Баъд аз тамом кардан шумо ба ин имтиҳон <b>баргашта наметавонед</b> (танҳо устод метавонад боз кушояд).</p>
       <div class="row"><button class="btn p" disabled=${busy} onClick=${finish}>Ҳа, тамом кардам</button><button class="btn" onClick=${() => setAsk(false)}>Не, идома медиҳам</button></div>
     <//>`}

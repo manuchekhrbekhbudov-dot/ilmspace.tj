@@ -151,7 +151,7 @@ function App() {
     if (me?.role === 'teacher' && ev.type === 'exam' && ev.name) {
       if (ev.blocked) toast(`⛔ ${ev.name} аз имтиҳон блок шуд (3 вайронкунӣ). Дар «Шогирдон» ё дар рӯзи имтиҳон «Блокро бардор»-ро пахш кунед.`, { big: true });
       else if (ev.count) toast(`⚠ ${ev.name}: вайронкунӣ ${ev.count} аз 3 — ${VIOL[ev.vtype]?.[0] || ev.vtype}`);
-      else if (ev.finished) toast(`🏁 ${ev.name} имтиҳонро тамом кард.`);
+      else if (ev.finished) toast(`✓ ${ev.name} имтиҳонро тамом кард: ${ev.points ?? 0}/${ev.max ?? 0} хол (${ev.percent ?? 0}%).`, { big: false });
       return;
     }
     if (me?.role !== 'student') return;

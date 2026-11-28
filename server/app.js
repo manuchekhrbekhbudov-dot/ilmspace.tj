@@ -770,12 +770,19 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     const e = examRow(l.id, user.id);
     if (!e.accepted_at) throw bad('Шумо ҳанӯз ба имтиҳон ворид нашудаед.');
     Q.run("UPDATE exam_violations SET finished_at=COALESCE(finished_at, strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE lesson_id=? AND user_id=?", l.id, user.id);
-    publish([Q.get('SELECT teacher_id FROM groups WHERE id=?', l.group_id).teacher_id], { type: 'exam', lesson_id: l.id, group_id: l.group_id, user_id: user.id, name: user.name, finished: true });
+    const s = lessonSets(l); const ids = [...s.class, ...s.home, ...s.extra]; const sv = solvedSet(user.id); const solved = ids.filter(id => sv.has(id)).length;
+    publish([Q.get('SELECT teacher_id FROM groups WHERE id=?', l.group_id).teacher_id], { type: 'exam', lesson_id: l.id, group_id: l.group_id, user_id: user.id, name: user.name, finished: true,
+      points: solved * 10, max: ids.length * 10, percent: ids.length ? Math.round((100 * solved) / ids.length) : 0 });
     return { ok: true };
   });
   R('GET', '/api/lessons/:id/exam', ({ user, params }) => {
     need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
-    return members(l.group_id).map(m => { const e = examRow(l.id, m.id); return { user: m, count: e.count, blocked: !!e.blocked, last_type: e.last_type || null, accepted_at: e.accepted_at || null, finished_at: e.finished_at || null }; });
+    const s = lessonSets(l); const ids = [...s.class, ...s.home, ...s.extra];
+    return members(l.group_id).map(m => {
+      const e = examRow(l.id, m.id); const sv = solvedSet(m.id); const solved = ids.filter(id => sv.has(id)).length;
+      return { user: m, count: e.count, blocked: !!e.blocked, last_type: e.last_type || null, accepted_at: e.accepted_at || null, finished_at: e.finished_at || null,
+        solved, total: ids.length, points: solved * 10, max: ids.length * 10, percent: ids.length ? Math.round((100 * solved) / ids.length) : 0 };
+    });
   });
   R('POST', '/api/lessons/:id/unblock', ({ user, params, body }) => {
     need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
