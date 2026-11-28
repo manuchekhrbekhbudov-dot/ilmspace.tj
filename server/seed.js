@@ -1,7 +1,7 @@
 // Пур кардани база: масъалаҳо, дарси намунавӣ, ҳисобҳои намоишӣ ва гурӯҳи омода
 import fs from 'node:fs';
 import { PROBLEMS, LESSON_PROBLEMS, TOPICS, DEFAULT_STARTER } from './seed/problems.js';
-import { hashPassword, inviteCode, lessonDates, localToUtcIso } from './util.js';
+import { hashPassword, checkPassword, inviteCode, lessonDates, localToUtcIso } from './util.js';
 
 const R = String.raw;
 
@@ -165,18 +165,32 @@ export function ensureTeacher(Q, env = process.env) {
   const pw = String(env.TEACHER_PASSWORD || '');
   if (!login) return null;
   if (pw.length < 8) { console.log('TEACHER_PASSWORD бояд ҳадди ақал 8 аломат бошад — ҳисоби устод сохта нашуд.'); return null; }
-  const name = String(env.TEACHER_NAME || '').trim() || 'Устод';
-  const ex = Q.get('SELECT id, role FROM users WHERE login=?', login);
+  if (pw === 'ilmspace') { console.log('TEACHER_PASSWORD набояд «ilmspace» бошад (ин парол ба ҳама маълум аст) — пароли устод иваз нашуд.'); return null; }
+  const name = String(env.TEACHER_NAME || '').trim();
+  // Пароли Render танҳо вақте гузошта мешавад, ки нав ё иваз шуда бошад. Агар устод баъд паролро дар сайт иваз кунад,
+  // аз нав оғоз шудани сервер онро бекор намекунад. Пароли фаромӯшшуда: TEACHER_PASSWORD-ро ба пароли нав иваз кунед.
+  const prev = Q.get("SELECT value FROM meta WHERE key='teacher_env_pw'")?.value;
+  const changed = !prev || !checkPassword(pw, prev);
+  const remember = () => Q.run("INSERT INTO meta (key, value) VALUES ('teacher_env_pw', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", hashPassword(pw));
+  const ex = Q.get('SELECT id, role, pass_hash FROM users WHERE login=?', login);
   if (ex) {
-    Q.run("UPDATE users SET pass_hash=?, name=?, role='teacher' WHERE id=?", hashPassword(pw), name, ex.id);
-    return { id: ex.id, login, created: false };
+    if (changed && checkPassword(pw, ex.pass_hash)) remember();   // парол аллакай ҳамин аст — касеро аз ҳисоб намебарорем
+    else if (changed) {
+      Q.run("UPDATE users SET pass_hash=?, role='teacher', weak_pw=0 WHERE id=?", hashPassword(pw), ex.id);
+      Q.run('DELETE FROM sessions WHERE user_id=?', ex.id);   // пароли нав — ҳамаи дастгоҳҳои кӯҳна аз ҳисоб мебароянд
+      remember();
+    }
+    if (name) Q.run('UPDATE users SET name=? WHERE id=?', name, ex.id);
+    return { id: ex.id, login, created: false, reset: changed };
   }
   const demo = Q.get("SELECT id FROM users WHERE login='ustod' AND role='teacher'");
   if (demo) {
-    Q.run('UPDATE users SET login=?, name=?, pass_hash=? WHERE id=?', login, name, hashPassword(pw), demo.id);
+    Q.run('UPDATE users SET login=?, name=?, pass_hash=?, weak_pw=0 WHERE id=?', login, name || 'Устод', hashPassword(pw), demo.id);
     Q.run('DELETE FROM sessions WHERE user_id=?', demo.id);
-    return { id: demo.id, login, created: false, fromDemo: true };
+    remember();
+    return { id: demo.id, login, created: false, fromDemo: true, reset: true };
   }
-  const id = Number(Q.run("INSERT INTO users (login, name, pass_hash, role) VALUES (?,?,?,'teacher')", login, name, hashPassword(pw)).lastInsertRowid);
-  return { id, login, created: true };
+  const id = Number(Q.run("INSERT INTO users (login, name, pass_hash, role) VALUES (?,?,?,'teacher')", login, name || 'Устод', hashPassword(pw)).lastInsertRowid);
+  remember();
+  return { id, login, created: true, reset: true };
 }

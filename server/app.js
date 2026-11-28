@@ -24,7 +24,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   if (seed) seedDemo(Q);
   if (migrateCourse(Q)) console.log(`Курси нав (${COURSE.problems.length} масъала) ба база илова шуд.`);
   const t = ensureTeacher(Q);
-  if (t) console.log(`Ҳисоби устод омода аст: ${t.login}${t.fromDemo ? ' (гурӯҳҳо ва дарси омода ба он гузаштанд)' : ''}`);
+  if (t) console.log(`Ҳисоби устод омода аст: ${t.login}${t.fromDemo ? ' (гурӯҳҳо ва дарси омода ба он гузаштанд)' : ''}${t.reset ? ' — пароли TEACHER_PASSWORD гузошта шуд' : ' — парол бетағйир (TEACHER_PASSWORD иваз нашудааст)'}`);
   // Ҳисобҳое, ки ҳанӯз пароли намоишии оммавӣ доранд (устодҳо ва ҳисобҳои намоишӣ)
   for (const u of Q.all(`SELECT id, pass_hash, weak_pw FROM users WHERE role='teacher' OR login IN (${DEMO_LOGINS.map(() => '?').join(',')})`, ...DEMO_LOGINS)) {
     const weak = [...PUBLIC_DEMO_PASSWORDS].some(pw => checkPassword(pw, u.pass_hash)) ? 1 : 0;
