@@ -5,7 +5,7 @@ import { TeacherHome, GroupPage, Report, StudentProgress } from './teacher.js';
 import { LiveLesson, ProjectorScreen } from './live.js';
 import { ProblemEditor, TemplateEditor } from './authoring.js';
 import { CourseMap, SetPage, VIOL } from './course.js';
-import { Journal } from './journal.js';
+import { Journal, TeacherJournals } from './journal.js';
 
 function useHash() {
   const [h, setH] = useState(location.hash || '#/');
@@ -41,7 +41,7 @@ const LogoMark = () => html`<svg viewBox="0 0 64 64" aria-hidden="true"><path d=
 function Header({ user, hash, onLogout, judge, storage }) {
   const online = useOnline();
   const nav = user.role === 'teacher'
-    ? [['#/', 'Гурӯҳҳо'], ['#/problems', 'Масъалаҳо']]
+    ? [['#/', 'Гурӯҳҳо'], ['#/journal', 'Журнал'], ['#/problems', 'Масъалаҳо']]
     : [['#/', 'Асосӣ'], ['#/course', 'Нақшаи курс'], ['#/journal', 'Журнал'], ['#/problems', 'Масъалаҳо']];
   const route = hash.split('?')[0];
   return html`<header class="top">
@@ -179,7 +179,7 @@ function App() {
   if (!seg.length) page = T ? html`<${TeacherHome} />` : html`<${StudentHome} user=${me} />`;
   else if (seg[0] === 'course') page = html`<${CourseMap} key=${seg[1] || 'mine'} gid=${seg[1] ? Number(seg[1]) : null} />`;
   else if (seg[0] === 'set') page = html`<${SetPage} key=${seg[1]} user=${me} lid=${seg[1]} kind=${seg[2]} idx=${seg[3]} />`;
-  else if (seg[0] === 'journal' && !T) page = html`<${Journal} />`;
+  else if (seg[0] === 'journal') page = T ? html`<${TeacherJournals} />` : html`<${Journal} />`;
   else if (seg[0] === 'profile') page = html`<${Profile} me=${me} onSaved=${u => setMe(u)} />`;
   else if (seg[0] === 'problems') page = html`<${ProblemsList} user=${me} />`;
   else if (seg[0] === 'p' && !T) page = html`<${Workspace} key=${seg[1] + (q.lesson || '')} user=${me} pid=${Number(seg[1])} lessonId=${q.lesson ? Number(q.lesson) : null} />`;

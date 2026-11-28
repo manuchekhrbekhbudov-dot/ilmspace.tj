@@ -1,6 +1,6 @@
 // Журнал (CRM): ҳозирӣ ва холи ҳар рӯз (0–5), бонуси ҳафта, фоизи ҳафта ва миёна, диаграмма.
 // Устод менависад; шогирд ҳамин ҷадвалро мебинад (бе шарҳҳо ва бе маълумоти падару модар).
-import { html, useState, api, useLoad, useEvents, Loading, ErrorBox, Modal, toast, fDateTime } from './lib.js';
+import { html, useState, api, useLoad, useEvents, Loading, ErrorBox, Modal, toast, fDateTime, store } from './lib.js';
 
 // Рангҳои ҷавоҳирӣ (тилло, зумуррад, ёқут, сапфир…)
 const COLORS = ['#e0bd6e', '#5fbf9a', '#d9776f', '#6f9fd8', '#b58ad6', '#e39a5c', '#4fb3b8', '#c9a0a8', '#9fc26a', '#8c8fe0', '#d6b48a', '#6cc4e0', '#e07fa3', '#a3a3a3', '#78c98d', '#c78f4f'];
@@ -148,4 +148,21 @@ function InfoCard({ s, data, onClose }) {
     <div class="small muted" style="margin:8px 0">Ин маълумотро танҳо устод мебинад — шогирд намебинад.</div>
     <div class="row"><button class="btn p" disabled=${busy} onClick=${save}>Захира кун</button><button class="btn" onClick=${onClose}>Бекор</button></div>
   <//>`;
+}
+
+// Устод: журнали ҳамаи гурӯҳҳо — ҳар гурӯҳ алоҳида (гурӯҳро аз боло интихоб кунед)
+export function TeacherJournals() {
+  const [{ data, loading, error }, reload] = useLoad(() => api('/api/groups'));
+  const [gid, setGid] = useState(() => store.get('journalGroup'));
+  if (loading) return html`<${Loading} />`;
+  if (error) return html`<div class="page"><${ErrorBox} error=${error} retry=${reload} /></div>`;
+  if (!data.length) return html`<div class="page"><div class="card">Ҳанӯз гурӯҳ нест.</div></div>`;
+  const cur = data.find(g => g.id === gid) || data[0];
+  const pick = id => { setGid(id); store.set('journalGroup', id); };
+  return html`<div class="page">
+    <h1 style="margin:0 0 12px">Журнал</h1>
+    <div class="jgroups" role="tablist" aria-label="Гурӯҳҳо">${data.map(g => html`<button role="tab" aria-selected=${g.id === cur.id ? 'true' : 'false'} class=${'jgroup' + (g.id === cur.id ? ' on' : '')} onClick=${() => pick(g.id)}>
+      <b>${g.name}</b><small>${g.students} шогирд</small></button>`)}</div>
+    <${Journal} key=${cur.id} gid=${cur.id} />
+  </div>`;
 }

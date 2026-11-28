@@ -958,3 +958,10 @@ body::before { background: radial-gradient(900px 480px at 50% -14%, color-mix(in
 :root, :root[data-theme="dark"] { --c-class: #6b8cff; --c-home: #3aa9ff; --c-extra: #2cc3cf; --c-exam: #ff8f45; --c-amber: #ff8f45; }
 :root[data-theme="light"] { --c-class: #2f55e0; --c-home: #0a73d9; --c-extra: #0b8794; --c-exam: #d35f12; --c-amber: #d35f12; }
 @media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --c-class: #2f55e0; --c-home: #0a73d9; --c-extra: #0b8794; --c-exam: #d35f12; --c-amber: #d35f12; } }
+/* Журнал: интихоби гурӯҳ */
+.jgroups { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.jgroup { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px 18px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font: inherit; cursor: pointer; box-shadow: var(--shadow); }
+.jgroup b { font-size: 16px; } .jgroup small { color: var(--muted); }
+.jgroup:hover { border-color: var(--acc); }
+.jgroup.on { background: var(--brand, var(--acc)); border-color: transparent; color: #fff; box-shadow: 0 8px 22px rgba(6,101,255,.30); }
+.jgroup.on small { color: rgba(255,255,255,.8); }
