@@ -690,6 +690,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
         ? Q.get('SELECT SUM(blocked) blocked, SUM(CASE WHEN count>0 AND blocked=0 THEN 1 ELSE 0 END) warned, SUM(CASE WHEN accepted_at IS NOT NULL THEN 1 ELSE 0 END) entered FROM exam_violations WHERE lesson_id=?', l.id) : null;
       return { id: l.id, number: l.number, week: w, day: d, kind: l.kind, title: l.title, topic: l.topic, scheduled_at: l.scheduled_at, status: l.status, state, locked, opened: isOpen(l),
         exam: examStat ? { blocked: examStat.blocked || 0, warned: examStat.warned || 0, entered: examStat.entered || 0 } : undefined,
+        my: u.role === 'student' && l.kind === 'exam' ? (e => ({ finished: !!e.finished_at, blocked: !!e.blocked }))(examRow(l.id, u.id)) : undefined,
         sets: { class: count(sets.class), home: count(sets.home), extra: count(sets.extra) } };
     });
     const weeks = [];

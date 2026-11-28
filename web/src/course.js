@@ -65,16 +65,16 @@ export function CourseMap({ gid, embedded }) {
       <div class="days">${w.days.map(d => html`<button type="button" class=${'daycard' + (d.state === 'live' || d.state === 'today' ? ' hot' : '') + (d.locked ? ' locked' : '')} onClick=${() => setOpen(d)}
           aria-label=${`Ҳафтаи ${w.week}, ${d.kind === 'exam' ? 'имтиҳон' : 'рӯзи ' + d.day}`}>
         <div class="daytop">
-          <span class=${'dayicon' + (d.kind === 'exam' ? ' exam' : '') + (d.state === 'done' ? ' done' : '')}><${Icon} name=${dayIcon(d)} /></span>
+          <span class=${'dayicon' + (d.kind === 'exam' ? ' exam' : '') + (d.state === 'done' || d.my?.finished ? ' done' : '')}><${Icon} name=${dayIcon(d.my?.finished ? { ...d, state: 'done' } : d)} /></span>
           <div class="daymeta"><div class="dayname">${d.kind === 'exam' ? `Ҳ${w.week} · Имтиҳон` : `Ҳ${w.week} · Рӯзи ${d.day}`}</div>
             <div class="muted small">${d.title}</div>
             <div class="muted small">${fWeekday(d.scheduled_at)}, ${fDate(d.scheduled_at)}</div></div>
-          <span class=${'state ' + STATE[d.state][1]}>${STATE[d.state][0]}</span>
+          <span class=${'state ' + STATE[d.my?.finished ? 'done' : d.state][1]}>${STATE[d.my?.finished ? 'done' : d.state][0]}</span>
         </div>
         <div class="daybottom">
           <div class="chips">${['class', 'home', 'extra'].map(k => html`<${SetChip} k=${k} s=${d.sets[k]} role=${role} kind=${d.kind} />`)}
-            ${role === 'student' && !d.locked && (() => { const sv = d.sets.class.solved + d.sets.home.solved + d.sets.extra.solved, tt = d.sets.class.total + d.sets.home.total + d.sets.extra.total; const p = pct(sv, tt);
-              return tt ? html`<span class="chip pctchip" style=${`--c:${pctColor(p)}`} title=${`${sv * 10} / ${tt * 10} хол`}>${p}%</span>` : ''; })()}
+            ${role === 'student' && d.kind === 'exam' && d.my?.finished && (() => { const sv = d.sets.class.solved + d.sets.home.solved + d.sets.extra.solved, tt = d.sets.class.total + d.sets.home.total + d.sets.extra.total; const p = pct(sv, tt);
+              return tt ? html`<span class="chip pctchip" style=${`--c:${pctColor(p)}`} title=${`Натиҷаи имтиҳон: ${sv * 10} / ${tt * 10} хол`}>Натиҷа: ${p}%</span>` : ''; })()}
             ${d.exam?.blocked > 0 && html`<span class="chip bad">⛔ ${d.exam.blocked} блок</span>`}
             ${d.exam?.warned > 0 && html`<span class="chip warn">⚠ ${d.exam.warned} вайронкунӣ</span>`}</div>
           <span class="chev"><${Icon} name="chevron" /></span>
@@ -105,9 +105,9 @@ function DayPanel({ d, role, group, onClose, onChanged }) {
       : loading ? html`<${Loading} />` : error ? html`<${ErrorBox} error=${error} retry=${reload} />` : html`<div class="col" style="margin-top:14px">
       ${role === 'teacher' && html`<div class="row"><a class="btn" href=${'#/live/' + d.id}>Дарси зинда</a><a class="btn" href=${'#/report/' + d.id}>Ҳисобот</a><button class="btn" onClick=${() => setEdit(true)}>Маҷмӯаҳоро таҳрир кун</button>
         ${d.state !== 'live' && html`<button class="btn" title="Масъалаҳои ин рӯзро аз нақшаи курс аз нав мегузорад" onClick=${replan}>↺ Аз нақшаи курс</button>`}</div>`}
-      ${role === 'student' && (() => { const all = ['class', 'home', 'extra'].flatMap(k => data.sets[k]); const sv = all.filter(p => p.solved).length; const p = pct(sv, all.length);
-        return all.length ? html`<div class="dayscore" style=${`--c:${pctColor(p)}`}><b>${p}%</b><div><div><b>${sv * 10} / ${all.length * 10}</b> хол</div><div class="small muted">Ҳал шуд ${sv} аз ${all.length} масъала · ҳар масъала 10 хол</div></div></div>` : ''; })()}
-      ${data.exam && html`<div class="notice warn"><b>Имтиҳон.</b> Нусхабардорӣ (copy/paste) ва рафтан ба равзанаи дигар манъ аст. Пас аз 3 вайронкунӣ шумо блок мешавед. Ҳозир: ${data.exam.count}/3.</div>`}
+      ${role === 'student' && data.exam?.finished && (() => { const all = ['class', 'home', 'extra'].flatMap(k => data.sets[k]); const sv = all.filter(p => p.solved).length; const p = pct(sv, all.length);
+        return all.length ? html`<div class="dayscore" style=${`--c:${pctColor(p)}`}><b>${p}%</b><div><div>Натиҷаи имтиҳон: <b>${sv * 10} / ${all.length * 10}</b> хол</div><div class="small muted">Ҳал шуд ${sv} аз ${all.length} масъала · ҳар масъала 10 хол</div></div></div>` : ''; })()}
+      ${data.exam && !data.exam.finished && html`<div class="notice warn"><b>Имтиҳон.</b> Нусхабардорӣ (copy/paste) ва рафтан ба равзанаи дигар манъ аст. Пас аз 3 вайронкунӣ шумо блок мешавед. Ҳозир: ${data.exam.count}/3.</div>`}
       ${['class', 'home', 'extra'].map(k => { const ps = data.sets[k]; if (!ps.length) return null; const sv = ps.filter(p => p.solved).length;
         return html`<a class="card setcard" href=${`#/set/${d.id}/${k}`}>
           <div class="row"><span class=${'seticon set-' + (d.kind === 'exam' ? 'exam' : k)}>${k === 'class' ? '✓' : k === 'home' ? '⌂' : '+'}</span>
@@ -312,7 +312,6 @@ export function SetPage({ user, lid, kind, idx }) {
       <div class="progcard">
         <div class="row"><span class="pico" aria-hidden="true">🔥</span><b>Пешрафт</b><div class="spacer"></div><b class="pnum">${sv}/${ps.length}</b></div>
         <div class="bar"><i style=${`width:${(100 * sv) / ps.length}%`}></i></div>
-        <div class="ppts"><b>${sv * 10} / ${ps.length * 10}</b> хол · <b style=${`color:${pctColor(pct(sv, ps.length))}`}>${pct(sv, ps.length)}%</b></div>
         ${sv === ps.length ? html`<div class="pdone">🎉 Ҳамаи масъалаҳо ҳал шуданд!</div>` : ''}
       </div>
       <div class="listcard">
