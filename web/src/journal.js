@@ -27,7 +27,9 @@ export function Journal({ gid }) {
       <b>Миёна</b> = ҷамъи фоизи ҳафтаҳо ÷ шумораи ҳафтаҳо (масалан, 100% ва 40% → 70%). Рӯзи имтиҳон хол худкор аз натиҷаи имтиҳон гузошта мешавад.</div>
     ${[...data.weeks].reverse().map(w => html`<section class="jweek">
       <button class="jweek-h" aria-expanded=${isOpen(w) ? 'true' : 'false'} onClick=${() => setOpen({ ...open, [w.week]: !isOpen(w) })}>
-        Ҳафтаи ${w.week} <span class="caret">${isOpen(w) ? '▴' : '▾'}</span></button>
+        <span>Ҳафтаи ${w.week}</span><span class="jweek-d">${ddmm(w.days[0].date)} – ${ddmm(w.days[w.days.length - 1].date)}</span>
+        ${weekAvg(data, w) != null && html`<span class="jweek-avg">миёнаи гурӯҳ <${Pct} v=${weekAvg(data, w)} /></span>`}
+        <span class="caret">${isOpen(w) ? '▴' : '▾'}</span></button>
       ${isOpen(w) && html`<${WeekTable} w=${w} data=${data} T=${T} act=${act} onComment=${(s, d) => setCm({ s, d })} onInfo=${setInfo} gid=${gid} />`}
     </section>`)}
     ${cm && html`<${Comments} s=${cm.s} d=${cm.d} onClose=${() => { setCm(null); reload(true); }} />`}
@@ -47,9 +49,9 @@ function WeekTable({ w, data, T, act, onComment, onInfo, gid }) {
           onChange=${e => act(() => api(`/api/lessons/${d.id}/attendance/all`, { method: 'POST', body: { status: e.target.checked ? 'present' : null } }))} /> Ҳоз.</label>` : 'Ҳоз.'}</th><th class="jsub">Хол</th>`)}</tr>
     </thead>
     <tbody>${data.students.map((s, i) => { const sw = s.weeks[wi]; return html`<tr class=${!T && s.id === data.me ? 'me' : ''}>
-      <td class="jname">${T ? html`<button class="jnamebtn" onClick=${() => onInfo(s)}>${i + 1}. ${s.name}</button>` : html`${i + 1}. ${s.name}`}</td>
+      <td class="jname"><span class="jav" style=${`background:${COLORS[i % COLORS.length]}`}>${s.name.trim().charAt(0).toUpperCase()}</span>${T ? html`<button class="jnamebtn" onClick=${() => onInfo(s)}>${i + 1}. ${s.name}</button>` : html`${i + 1}. ${s.name}`}</td>
       ${sw.days.map(c => html`<td class="jatt">
-          ${T && html`<button class=${'jc' + (c.comments ? ' has' : '')} title="Шарҳ" aria-label=${'Шарҳ: ' + s.name} onClick=${() => onComment(s, w.days.find(d => d.id === c.id))}>${c.comments ? '▣' : '☐'}</button>`}
+          ${T && html`<button class=${'jc' + (c.comments ? ' has' : '')} title="Шарҳ" aria-label=${'Шарҳ: ' + s.name} onClick=${() => onComment(s, w.days.find(d => d.id === c.id))}><${Bubble} on=${c.comments > 0} /></button>`}
           <input type="checkbox" aria-label=${'Ҳозирӣ: ' + s.name} checked=${c.att === 'present' || c.att === 'late'} disabled=${!T}
             class=${c.att === 'late' ? 'late' : c.att === 'absent' ? 'absent' : ''}
             onChange=${e => act(() => api(`/api/lessons/${c.id}/attendance`, { method: 'PUT', body: { user_id: s.id, status: e.target.checked ? 'present' : 'absent' } }))} />
@@ -67,6 +69,15 @@ function WeekTable({ w, data, T, act, onComment, onInfo, gid }) {
   </table></div>`;
 }
 
+// Хати мулоим аз нуқтаҳо (каҷхатҳои Безье)
+function smooth(p) {
+  if (p.length < 2) return p.length ? `M${p[0][0]},${p[0][1]}` : '';
+  let d = `M${p[0][0]},${p[0][1]}`;
+  for (let i = 0; i < p.length - 1; i++) { const [x0, y0] = p[i], [x1, y1] = p[i + 1], m = (x1 - x0) / 2; d += ` C${x0 + m},${y0} ${x1 - m},${y1} ${x1},${y1}`; }
+  return d;
+}
+const Bubble = ({ on }) => html`<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-4 3v-3H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" fill=${on ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
+const weekAvg = (data, w) => { const i = data.weeks.indexOf(w); const v = data.students.map(s => s.weeks[i].percent).filter(x => x != null); return v.length ? Math.round(v.reduce((a, x) => a + x, 0) / v.length) : null; };
 const Pct = ({ v }) => v == null ? html`<span class="muted">–</span>` : html`<b class=${'pct ' + (v >= 75 ? 'hi' : v >= 50 ? 'mid' : 'lo')}>${v}%</b>`;
 
 // Диаграмма: фоизи ҳар ҳафта ва миёна барои ҳар шогирд
@@ -88,7 +99,7 @@ function Chart({ data }) {
       ${[0, 25, 50, 75, 100].map(v => html`<g><line x1=${L} x2=${W - R} y1=${y(v)} y2=${y(v)} class="grid" /><text x=${L - 8} y=${y(v) + 4} text-anchor="end" class="ax">${v}</text></g>`)}
       ${xs.map((t, i) => html`<g><line x1=${x(i)} x2=${x(i)} y1=${Tp} y2=${H - B} class="grid" /><text x=${x(i)} y=${H - 10} text-anchor=${i === 0 ? 'start' : i === xs.length - 1 ? 'end' : 'middle'} class="ax">${t}</text></g>`)}
       ${lines.map(l => l.pts.length > 0 && html`<g class=${hl == null ? '' : hl === l.s.id ? 'hl' : 'dim'}>
-        <polyline points=${l.pts.map(p => p.join(',')).join(' ')} fill="none" stroke=${l.color} stroke-width="3" stroke-linejoin="round" stroke-linecap="round" />
+        <path d=${smooth(l.pts)} fill="none" stroke=${l.color} stroke-width="3.5" stroke-linejoin="round" stroke-linecap="round" />
         ${l.pts.map(p => html`<circle cx=${p[0]} cy=${p[1]} r="4.5" fill=${l.color} />`)}</g>`)}
     </svg>
     <div class="jlegend">${lines.map(l => html`<button class=${'jl' + (hl === l.s.id ? ' on' : '') + (!data.me || l.s.id !== data.me ? '' : ' me')} onClick=${() => setHl(hl === l.s.id ? null : l.s.id)}>

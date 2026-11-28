@@ -700,3 +700,106 @@ a.chip:hover { text-decoration: none; filter: brightness(1.1); }
 .pct.hi { color: var(--ok); } .pct.mid { color: var(--warn); } .pct.lo { color: var(--bad); }
 .jcom { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; background: var(--panel2); }
 .jsum { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+
+/* ───── Журнал: тарҳи зебо ───── */
+.jchart { border-radius: 22px; padding: 20px 22px 16px; background: linear-gradient(180deg, var(--panel), var(--panel2)); }
+.jchart .ax { font-size: 14px; }
+.jchart path { filter: drop-shadow(0 2px 3px rgba(0,0,0,.18)); transition: opacity .2s; }
+.jl { border: 1px solid transparent; border-radius: 99px; padding: 4px 10px; }
+.jl.on { border-color: var(--line); }
+.jweek { border-radius: 20px; box-shadow: var(--shadow); }
+.jweek-h { gap: 14px; padding: 16px 20px; }
+.jweek-d { font-size: 14px; font-weight: 600; color: var(--muted); }
+.jweek-avg { margin-left: auto; font-size: 14px; font-weight: 600; color: var(--muted); display: inline-flex; gap: 8px; align-items: center; }
+.jweek-avg + .caret { margin-left: 4px; } .jweek-h .caret:only-of-type { margin-left: auto; }
+.jwrap { padding: 0 14px 16px; }
+.jt { border-collapse: separate; border-spacing: 0; }
+.jt th, .jt td { border: 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent); padding: 8px 8px; }
+.jt thead th { background: transparent; color: var(--muted); font-size: 12.5px; font-weight: 700; letter-spacing: .02em; }
+.jt thead tr:first-child th { color: var(--text); font-size: 14px; }
+.jt th.jdate { border-left: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.jt th.jdate.today { background: var(--acc-soft); border-radius: 12px 12px 0 0; }
+.jt td.jatt { border-left: 1px solid color-mix(in srgb, var(--line) 60%, transparent); }
+.jt th.jname { background: var(--panel); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+.jt tbody tr:hover td { background: color-mix(in srgb, var(--acc) 5%, var(--panel)); }
+.jt tbody tr:hover td.jname { background: color-mix(in srgb, var(--acc) 5%, var(--panel)); }
+.jt td.jname { font-size: 14.5px; }
+.jt input[type=checkbox] { appearance: none; -webkit-appearance: none; width: 22px; height: 22px; border-radius: 7px; border: 2px solid var(--line); background: var(--panel2); display: inline-grid; place-content: center; margin: 0; transition: background .12s, border-color .12s; }
+.jt input[type=checkbox]::after { content: ''; width: 11px; height: 6px; border: 2.5px solid var(--acc-ink); border-top: 0; border-right: 0; transform: rotate(-45deg) translate(1px, -1px); opacity: 0; }
+.jt input[type=checkbox]:checked { background: var(--acc); border-color: var(--acc); }
+.jt input[type=checkbox]:checked::after { opacity: 1; }
+.jt input[type=checkbox].late:checked { background: var(--warn); border-color: var(--warn); }
+.jt input[type=checkbox].absent { outline: 0; border-color: color-mix(in srgb, var(--bad) 70%, transparent); background: var(--bad-bg); }
+.jt input[type=checkbox]:disabled { cursor: default; }
+.jt input[type=checkbox]:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.jc { display: inline-flex; color: color-mix(in srgb, var(--muted) 80%, transparent); margin-right: 8px; }
+.jc:hover { color: var(--acc); } .jc.has { color: var(--violet); }
+.jsel { appearance: none; -webkit-appearance: none; border-radius: 10px; padding: 5px 26px 5px 12px; font-weight: 700; cursor: pointer;
+  background: var(--panel2) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239ba7bb' stroke-width='1.6' fill='none'/%3E%3C/svg%3E") no-repeat right 9px center; }
+.jsel:hover { border-color: var(--acc); }
+.jbonus { border-radius: 10px; font-weight: 700; }
+.jscv { display: inline-block; min-width: 30px; padding: 3px 8px; border-radius: 8px; background: var(--panel2); }
+.pct { display: inline-block; min-width: 50px; padding: 3px 8px; border-radius: 99px; font-size: 13.5px; }
+.pct.hi { background: var(--ok-bg); } .pct.mid { background: var(--warn-bg); } .pct.lo { background: var(--bad-bg); }
+.jhelp { padding: 10px 14px; border-radius: 14px; background: var(--panel2); border: 1px solid var(--line); }
+
+/* ═════ «WOW»: градиентҳо, кортҳои дурахшон, рангҳои зинда (нарм барои чашм) ═════ */
+:root { --g1: #8b7bff; --g2: #4cb8ff; --g3: #3fdcbc; --grad: linear-gradient(120deg, var(--g1), var(--g2) 55%, var(--g3)); --radius: 14px; }
+:root[data-theme="light"] { --g1: #6d5ef5; --g2: #2f9be8; --g3: #18b597; }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { --g1: #6d5ef5; --g2: #2f9be8; --g3: #18b597; } }
+html { background: var(--bg); }
+body { background: transparent; background-attachment: scroll; }
+body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(700px 420px at 8% -5%, color-mix(in srgb, var(--g1) 20%, transparent), transparent 70%),
+    radial-gradient(650px 420px at 95% 5%, color-mix(in srgb, var(--g2) 16%, transparent), transparent 70%),
+    radial-gradient(800px 500px at 60% 110%, color-mix(in srgb, var(--g3) 12%, transparent), transparent 70%), var(--bg);
+  transform: translateZ(0); }
+/* Сарлавҳа */
+.top { background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: none; border-color: color-mix(in srgb, var(--g2) 22%, var(--line)); box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+.logo { font-size: 17px; }
+.logo b { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.nav a { border-radius: 10px; }
+.nav a.on { background: color-mix(in srgb, var(--g2) 14%, transparent); color: var(--text); box-shadow: inset 0 -2px 0 var(--g2); }
+.avatar { background: var(--grad); color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.25); }
+/* Сарлавҳаҳои саҳифа */
+.page > h1, .page > .row > h1, .examdone h1, .wsx-title .ttl { letter-spacing: -.01em; }
+.page > .row > h1, .page > h1 { background: linear-gradient(90deg, var(--text), color-mix(in srgb, var(--g2) 60%, var(--text))); -webkit-background-clip: text; background-clip: text; color: transparent; }
+/* Кортҳо: ҳошияи градиентӣ ва равшании нарм */
+.card, .wsx, .setside, .jweek, .jchart, .daycard {
+  border: 1px solid transparent;
+  background: linear-gradient(var(--panel), var(--panel)) padding-box,
+    linear-gradient(140deg, color-mix(in srgb, var(--g1) 45%, var(--line)), var(--line) 40%, color-mix(in srgb, var(--g3) 40%, var(--line))) border-box;
+  box-shadow: 0 12px 32px rgba(0,0,0,.16);
+}
+.card, .daycard { border-radius: 18px; }
+.daycard { transition: transform .15s, box-shadow .15s; }
+.daycard:hover { transform: translateY(-3px); box-shadow: 0 18px 40px color-mix(in srgb, var(--g2) 22%, rgba(0,0,0,.2)); }
+/* Тугмаҳо */
+.btn { border-radius: 12px; transition: transform .12s, box-shadow .12s, background .12s, border-color .12s; }
+.btn:hover { transform: translateY(-1px); }
+.btn.p { background: var(--grad); color: #fff; border-color: transparent; text-shadow: 0 1px 2px rgba(0,0,0,.25);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--g2) 35%, transparent); }
+.btn.p:hover { filter: brightness(1.06); box-shadow: 0 12px 28px color-mix(in srgb, var(--g1) 40%, transparent); }
+.btn.p:disabled { filter: grayscale(.4); opacity: .7; transform: none; }
+/* Ҷадвалбандҳо (tabs) — дукмаҳои мудаввар */
+.tabs { gap: 6px; border-bottom: 0; padding: 6px; background: color-mix(in srgb, var(--panel) 80%, transparent); border-radius: 14px; }
+.tabs button { border-radius: 10px; border-bottom: 0; padding: 9px 16px; transition: background .12s, color .12s; }
+.tabs button:hover { color: var(--text); background: var(--panel2); }
+.tabs button.on { color: #fff; background: var(--grad); box-shadow: 0 6px 16px color-mix(in srgb, var(--g2) 30%, transparent); text-shadow: 0 1px 2px rgba(0,0,0,.2); }
+/* Масъала ва маҷмӯа */
+.wsx-title .num { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.settab.on { background: color-mix(in srgb, var(--g2) 14%, var(--panel2)); border-color: color-mix(in srgb, var(--g2) 60%, transparent); }
+.setitem.on { background: linear-gradient(90deg, color-mix(in srgb, var(--g1) 16%, transparent), color-mix(in srgb, var(--g3) 10%, transparent)); box-shadow: inset 3px 0 0 var(--g2); border-color: transparent; }
+.progcard .bar > i, .bar > i { background: var(--grad); }
+.chip.acc { background: color-mix(in srgb, var(--g2) 14%, transparent); border-color: color-mix(in srgb, var(--g2) 50%, transparent); color: var(--text); }
+/* Журнал */
+.jweek-h { font-size: 20px; }
+.jweek-h > span:first-child { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.jav { display: inline-flex; width: 30px; height: 30px; border-radius: 50%; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; color: #fff; margin-right: 10px; flex: none; text-shadow: 0 1px 2px rgba(0,0,0,.3); }
+.jt td.jname > * { vertical-align: middle; }
+.jt input[type=checkbox]:checked { background: var(--grad); border-color: transparent; }
+.jt th.jdate.today { background: color-mix(in srgb, var(--g2) 14%, transparent); color: var(--text); }
+.jt tbody tr:hover td, .jt tbody tr:hover td.jname { background: color-mix(in srgb, var(--g2) 7%, var(--panel)); }
+.jsel:focus, .jbonus:focus { outline: 0; border-color: var(--g2); box-shadow: 0 0 0 3px color-mix(in srgb, var(--g2) 25%, transparent); }
+.pct.hi { background: linear-gradient(90deg, color-mix(in srgb, var(--g3) 26%, transparent), color-mix(in srgb, var(--g3) 12%, transparent)); }
+@media (prefers-reduced-motion: reduce) { .daycard:hover, .btn:hover { transform: none; } }
