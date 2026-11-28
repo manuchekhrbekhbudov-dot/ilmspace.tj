@@ -200,6 +200,7 @@ export function AssignmentForm({ g, problems, preset = [], lessonId, onDone }) {
   const tomorrow = new Date(Date.now() + 5 * 3600000 + 86400000).toISOString().slice(0, 10);
   const [f, setF] = useState({ title: 'Вазифаи хонагӣ', ids: preset, date: tomorrow, time: '20:00' });
   const [err, setErr] = useState(null);
+  const [q, setQ] = useState(''); const nq = q.trim().toLowerCase();
   const pub = problems.filter(p => p.version > 0 && !p.lessonOnly);
   const toggle = id => setF(x => ({ ...x, ids: x.ids.includes(id) ? x.ids.filter(i => i !== id) : [...x.ids, id] }));
   const send = async e => { e.preventDefault(); setErr(null); try { await api(`/api/groups/${g.group?.id || g.id}/assignments`, { method: 'POST', body: { title: f.title, problem_ids: f.ids, due_local: `${f.date}T${f.time}`, lesson_id: lessonId } }); toast('Вазифа ба гурӯҳ фиристода шуд.'); onDone?.(); } catch (x) { setErr(x.message); } };
@@ -207,7 +208,8 @@ export function AssignmentForm({ g, problems, preset = [], lessonId, onDone }) {
     <div class="row"><label class="f" style="flex:2">Ном<input class="i" value=${f.title} onInput=${e => setF({ ...f, title: e.target.value })} /></label>
       <label class="f" style="flex:1">Муҳлат: сана<input class="i" type="date" value=${f.date} onInput=${e => setF({ ...f, date: e.target.value })} /></label>
       <label class="f" style="flex:1">соат (Душанбе)<input class="i" type="time" value=${f.time} onInput=${e => setF({ ...f, time: e.target.value })} /></label></div>
-    <div class="grid3" style="gap:10px">${TOPIC_KEYS.map(k => html`<div><div class="kicker">${TOPIC[k]}</div>${pub.filter(p => p.topic === k).map(p => html`<label style="display:block;padding:3px 0"><input type="checkbox" checked=${f.ids.includes(p.id)} onChange=${() => toggle(p.id)} /> ${p.title}</label>`)}</div>`)}</div>
+    <input class="i" type="search" placeholder="Ҷустуҷӯи масъала аз рӯи ном…" value=${q} onInput=${e => setQ(e.target.value)} aria-label="Ҷустуҷӯи масъала" />
+    <div class="grid3 pickgrid" style="gap:10px">${TOPIC_KEYS.map(k => { const ps = pub.filter(p => p.topic === k && (!nq || p.title.toLowerCase().includes(nq) || f.ids.includes(p.id))); return ps.length ? html`<div><div class="kicker">${TOPIC[k]} (${ps.length})</div>${ps.map(p => html`<label style="display:block;padding:3px 0"><input type="checkbox" checked=${f.ids.includes(p.id)} onChange=${() => toggle(p.id)} /> ${p.title}</label>`)}</div>` : null; })}</div>
     ${err && html`<div class="err">${err}</div>`}
     <div><button class="btn p" disabled=${!f.ids.length}>Ба гурӯҳ фирист (${f.ids.length})</button></div>
   </form>`;
@@ -285,30 +287,63 @@ export function Report({ id }) {
   </div>`;
 }
 
+const SP_SETS = [['class', 'Синфӣ'], ['home', 'Хонагӣ'], ['extra', 'Иловагӣ']];
+const SP_EXAM = { class: 'A', home: 'B', extra: 'Мураккаб' };
+const nSolved = ps => ps.filter(p => p.solved).length;
+// Пешрафти як шогирд аз рӯи рӯзҳои курс: ҳафта → рӯз → синфӣ / хонагӣ / иловагӣ
 export function StudentProgress({ gid, uid }) {
   const [{ data, loading, error }, reload] = useLoad(() => api(`/api/groups/${gid}/students/${uid}`), [gid, uid]);
   const [open, setOpen] = useState(null);
-  useEvents(ev => { if (ev.type === 'activity' && Number(ev.user_id) === Number(uid)) reload(true); }, [uid]);
+  const [exp, setExp] = useState({});
+  useEvents(ev => { if (ev.type === 'activity' && Number(ev.user_id) === Number(uid)) reload(true); if (ev.type === 'exam' && Number(ev.user_id) === Number(uid)) reload(true); }, [uid]);
   if (loading) return html`<${Loading} />`;
   if (error) return html`<div class="page"><${ErrorBox} error=${error} retry=${reload} /></div>`;
-  const { student, problems, help, assignments } = data;
-  const solved = problems.filter(p => p.solved).length;
+  const { student, days, other, help, assignments } = data;
+  const all = d => SP_SETS.flatMap(([k]) => d.sets[k]);
+  const openDays = days.filter(d => d.opened);
+  const total = openDays.reduce((a, d) => a + all(d).length, 0);
+  const solved = openDays.reduce((a, d) => a + nSolved(all(d)), 0);
+  const lastOpen = [...days].reverse().find(d => d.opened);
+  const isExp = d => exp[d.id] ?? d.id === lastOpen?.id;
+  const weeks = [];
+  for (const d of days) (weeks[d.week - 1] ||= { week: d.week, days: [] }).days.push(d);
   return html`<div class="page">
     <a href=${`#/g/${gid}?tab=students`} class="small">← Шогирдон</a>
-    <div class="row" style="margin:6px 0 14px"><h1>${student.name}</h1><span class="chip mono">${student.login}</span><span class="chip acc">${solved} аз ${problems.length} ҳал шуд</span></div>
-    <div class="grid2">
-      <div class="card" style="overflow:auto"><h3>Масъалаҳо</h3>
-        ${TOPIC_KEYS.map(t => { const ps = problems.filter(p => p.topic === t); if (!ps.length) return null; return html`<div class="kicker" style="margin-top:12px">${TOPIC[t]} · ${ps.filter(p => p.solved).length}/${ps.length}</div>
-          <table class="t" style="table-layout:fixed"><tbody>${ps.map(p => html`<tr class=${p.last_id ? 'click' : ''} onClick=${() => p.last_id && setOpen({ id: p.last_id })}>
-            <td style="width:42%">${p.title}</td>
-            <td style="width:33%">${p.solved ? html`<span class="v v-ok">✓ Ҳал шуд</span>` : p.last ? html`<${Verdict} v=${p.last.verdict} extra=${['CE'].includes(p.last.verdict) ? '' : `${p.last.passed}/${p.last.total}`} />` : html`<span class="v v-none">Оғоз нашуд</span>`}</td>
-            <td class="muted small">${p.attempts ? `${p.attempts} кӯшиш` : ''}${p.solved_at ? ` · ${fDateTime(p.solved_at)}` : ''}</td></tr>`)}</tbody></table>`; })}
+    <div class="row" style="margin:6px 0 14px"><h1>${student.name}</h1><span class="chip mono">${student.login}</span>
+      <span class="chip acc" data-testid="sp-total">${solved} аз ${total} ҳал шуд</span><span class="muted small">дар ${openDays.length} рӯзи кушода</span></div>
+    <div class="grid2 spgrid">
+      <div class="col" style="gap:10px">
+        ${weeks.filter(Boolean).map(w => html`<div class="kicker" style="margin-top:8px">Ҳафтаи ${w.week}</div>
+          ${w.days.map(d => { const ps = all(d), sv = nSolved(ps), pc = ps.length ? Math.round((100 * sv) / ps.length) : 0;
+            return html`<div class=${'card spday' + (d.opened ? '' : ' closed')}>
+              <button class="spday-h" aria-expanded=${isExp(d) ? 'true' : 'false'} onClick=${() => setExp({ ...exp, [d.id]: !isExp(d) })}>
+                <span class="spday-t"><b>Ҳ${d.week} · ${d.kind === 'exam' ? 'Имтиҳон' : `Рӯзи ${d.day}`}</b> <span class="muted">${d.title}</span></span>
+                <span class="spday-m">
+                  ${!d.opened && html`<span class="chip">🔒 пӯшида</span>`}
+                  ${d.exam?.blocked && html`<span class="chip bad">⛔ блок</span>`}
+                  ${d.exam?.finished && html`<span class="chip acc">${sv * 10}/${ps.length * 10} хол · ${pc}%</span>`}
+                  ${d.exam && !d.exam.finished && d.exam.accepted && !d.exam.blocked && html`<span class="chip warn">дар имтиҳон</span>`}
+                  ${SP_SETS.map(([k, n]) => html`<span class=${'chip' + (d.sets[k].length && nSolved(d.sets[k]) === d.sets[k].length ? ' acc' : '')}>${d.kind === 'exam' ? SP_EXAM[k] : n} ${nSolved(d.sets[k])}/${d.sets[k].length}</span>`)}
+                  <span class="caret" aria-hidden="true">${isExp(d) ? '▾' : '▸'}</span>
+                </span>
+                <span class="bar"><i style=${`width:${pc}%`}></i></span>
+              </button>
+              ${isExp(d) && html`<div class="spday-b">${SP_SETS.map(([k, n]) => html`<div class="kicker" style="margin-top:10px">${d.kind === 'exam' ? `Қисми ${SP_EXAM[k]}` : n} · ${nSolved(d.sets[k])}/${d.sets[k].length}</div>
+                <${ProbRows} ps=${d.sets[k]} onOpen=${setOpen} />`)}</div>`}
+            </div>`; })}`)}
+        ${other.length > 0 && html`<div class="card"><h3>Масъалаҳои дигар (машқ)</h3><${ProbRows} ps=${other} onOpen=${setOpen} /></div>`}
       </div>
       <div class="col">
-        <div class="card"><h3>Вазифаҳои хонагӣ</h3>${!assignments.length ? html`<div class="muted small">Вазифа нест.</div>` : assignments.map(a => html`<div style="margin-bottom:10px"><b>${a.title}</b> <span class="muted small">то ${fDateTime(a.due_at)}</span>${a.problems.map(p => html`<div class="row" style="padding:2px 0"><span class="small">${p.title}</span><div class="spacer"></div><${AsgState} s=${p.state} /></div>`)}</div>`)}</div>
+        <div class="card"><h3>Вазифаҳои хонагӣ</h3>${!assignments.length ? html`<div class="muted small">Вазифаи иловагӣ нест. Вазифаи хонагии ҳар рӯз дар чап, дар бахши «Хонагӣ».</div>` : assignments.map(a => html`<div style="margin-bottom:10px"><b>${a.title}</b> <span class="muted small">то ${fDateTime(a.due_at)}</span>${a.problems.map(p => html`<div class="row" style="padding:2px 0"><span class="small">${p.title}</span><div class="spacer"></div><${AsgState} s=${p.state} /></div>`)}</div>`)}</div>
         <div class="card"><h3>Дархостҳои ёрӣ</h3>${!help.length ? html`<div class="muted small">Дархост набуд.</div>` : help.map(h => html`<div class="small" style="padding:3px 0">${fDateTime(h.created_at)} · «${h.question}» <span class="muted">(${h.status === 'done' ? 'анҷом ёфт' : h.status === 'taken' ? 'гирифта шуд' : 'интизор'})</span></div>`)}</div>
       </div>
     </div>
     ${open && html`<${AttemptsModal} title=${'Кӯшиши охирин'} ids=${[open.id]} onClose=${() => setOpen(null)} />`}
   </div>`;
+}
+function ProbRows({ ps, onOpen }) {
+  return html`<table class="t" style="table-layout:fixed"><tbody>${ps.map((p, j) => html`<tr class=${p.last_id ? 'click' : ''} onClick=${() => p.last_id && onOpen({ id: p.last_id })}>
+    <td style="width:46%"><span class="muted small">${j + 1}.</span> ${p.title}</td>
+    <td style="width:30%">${p.solved ? html`<span class="v v-ok">✓ Ҳал шуд</span>` : p.last ? html`<${Verdict} v=${p.last.verdict} extra=${['CE'].includes(p.last.verdict) ? '' : `${p.last.passed}/${p.last.total}`} />` : html`<span class="v v-none">Оғоз нашуд</span>`}</td>
+    <td class="muted small">${p.attempts ? `${p.attempts} кӯшиш` : ''}${p.solved_at ? ` · ${fDateTime(p.solved_at)}` : ''}</td></tr>`)}</tbody></table>`;
 }

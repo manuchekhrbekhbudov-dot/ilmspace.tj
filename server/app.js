@@ -72,12 +72,50 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   function teacherSeesUser(t, uid) {
     return t.role === 'teacher' && !!Q.get('SELECT 1 FROM groups g JOIN group_members m ON m.group_id=g.id WHERE g.teacher_id=? AND m.user_id=?', t.id, uid);
   }
+  // Натиҷаи санҷиш дар база кӯтоҳ нигоҳ дошта мешавад: барои тестҳои гузашта танҳо ҳолат, барои
+  // тестҳои нагузашта баромади барнома (то 4 КБ). Вуруд ва ҷавоби интизорӣ аз худи масъала гирифта мешаванд.
+  const cut = (s, n) => (typeof s === 'string' && s.length > n ? s.slice(0, n) + '\n…' : s);
+  function slimDetails(d) {
+    let shown = 0;
+    const tests = (d.tests || []).map(t => {
+      const base = { i: t.i, hidden: !!t.hidden, tags: t.tags || [], status: t.status, ms: t.ms ?? null };
+      if (t.status === 'AC') return base;
+      const diff = t.diff ? { ...t.diff, expected: cut(t.diff.expected, 300), actual: cut(t.diff.actual, 300) } : null;
+      if (t.hidden) return { ...base, explain: t.explain, diff };   // баромади тести пинҳонӣ ба касе нишон дода намешавад
+      const n = shown++ ? 1500 : 4000;
+      return { ...base, explain: t.explain, actual: cut(t.actual ?? '', n), stderr: cut(t.stderr || '', 1500), diff };
+    });
+    return { ...d, tests, compile: cut(d.compile, 8000) };
+  }
+  {
+    const old = Q.all(`SELECT submission_id id FROM gradings WHERE instr(details, '"input":') > 0`);
+    if (old.length) {
+      let before = 0, after = 0;
+      Q.tx(() => { for (const { id } of old) {
+        const row = Q.get('SELECT details FROM gradings WHERE submission_id=?', id); const d = J(row.details); if (!d) continue;
+        const s = JSON.stringify(slimDetails(d)); before += row.details.length; after += s.length;
+        Q.run('UPDATE gradings SET details=? WHERE submission_id=?', s, id);
+      } });
+      console.log(`Натиҷаҳои санҷиш кӯтоҳ шуданд: ${old.length} кӯшиш, ${Math.round(before / 1024)} КБ → ${Math.round(after / 1024)} КБ.`);
+    }
+  }
+  // Версияҳои нашршудаи масъала тағйир намеёбанд — маълумоти таҳлилшударо дар хотира нигоҳ медорем
+  // (рӯйхати 700+ масъала ва ҷадвалҳо ҳар дафъа JSON-и калонро аз нав намехонанд). Натиҷаро тағйир надиҳед.
+  const VC = new Map();
+  function pvData(pid, v) {
+    const k = pid + ':' + v;
+    if (VC.has(k)) return VC.get(k);
+    const row = Q.get('SELECT data FROM problem_versions WHERE problem_id=? AND version=?', pid, v);
+    const d = row ? J(row.data) : null;
+    if (row) VC.set(k, d);
+    return d;
+  }
   function versionData(pid, v) {
     const p = Q.get('SELECT * FROM problems WHERE id=?', pid);
     if (!p) throw notFound('Масъала ёфт нашуд.');
     const ver = v || p.current_version;
-    const row = Q.get('SELECT data, version, published_at FROM problem_versions WHERE problem_id=? AND version=?', pid, ver);
-    return { p, row, data: row ? J(row.data) : null };
+    const row = Q.get('SELECT version, published_at FROM problem_versions WHERE problem_id=? AND version=?', pid, ver);
+    return { p, row, data: row ? pvData(pid, ver) : null };
   }
   function publicProblem(pid, v) {
     const { p, row, data } = versionData(pid, v);
@@ -88,26 +126,27 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   }
   const solvedSet = uid => new Set(Q.all("SELECT DISTINCT s.problem_id pid FROM submissions s JOIN gradings g ON g.submission_id=s.id WHERE s.user_id=? AND g.verdict='AC'", uid).map(r => r.pid));
 
-  function gradingView(g, forTeacher) {
+  function gradingView(g, forTeacher, pd) {
     if (!g) return null;
     const d = J(g.details) || {};
+    // Вуруд ва баромади интизории тест дар база такрор нигоҳ дошта намешавад — аз версияи масъала гирифта мешавад
     const tests = (d.tests || []).map(t => (t.hidden && !forTeacher)
       ? { i: t.i, hidden: true, tags: t.tags, status: t.status, ms: t.ms, explain: t.explain }
-      : t);
+      : (t.status === 'AC' || t.input !== undefined) ? t
+      : { ...t, input: cut(pd?.tests?.[t.i - 1]?.input ?? '', 4000), expected: cut(pd?.tests?.[t.i - 1]?.output ?? '', 4000) });
     return { verdict: g.verdict, passed: g.passed, total: g.total, failedTags: J(g.failed_tags) || [], finished_at: g.finished_at,
       compile: d.compile, compileExplain: d.compileExplain, detail: d.detail, notConfigured: d.notConfigured, steps: d.steps, tests };
   }
   function submissionView(s, viewer) {
     const forTeacher = viewer.role === 'teacher';
     const g = Q.get('SELECT * FROM gradings WHERE submission_id=?', s.id);
-    const pv = Q.get('SELECT data FROM problem_versions WHERE problem_id=? AND version=?', s.problem_id, s.problem_version);
-    const pd = pv ? J(pv.data) : {};
+    const pd = pvData(s.problem_id, s.problem_version) || {};
     const cur = Q.get('SELECT current_version FROM problems WHERE id=?', s.problem_id);
     const comments = Q.all('SELECT c.id, c.line, c.text, c.created_at, u.name author FROM comments c JOIN users u ON u.id=c.author_id WHERE submission_id=? ORDER BY c.id', s.id);
     const user = Q.get('SELECT id, name, login FROM users WHERE id=?', s.user_id);
     return { id: s.id, number: s.number, problem_id: s.problem_id, problem_title: pd.title, problem_version: s.problem_version,
       version_is_old: cur && cur.current_version !== s.problem_version, lesson_id: s.lesson_id, assignment_id: s.assignment_id,
-      code: s.code, status: s.status, created_at: s.created_at, grading: gradingView(g, forTeacher), comments, user: forTeacher || viewer.id === s.user_id ? user : undefined };
+      code: s.code, status: s.status, created_at: s.created_at, grading: gradingView(g, forTeacher, pd), comments, user: forTeacher || viewer.id === s.user_id ? user : undefined };
   }
   function canSeeSub(u, s) { return s.user_id === u.id || teacherSeesUser(u, s.user_id); }
 
@@ -126,7 +165,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     const r = await judgeAll(s.code, data.tests, { timeMs: data.timeMs, memoryMb: data.memoryMb });
     for (const t of r.tests || []) t.explain = explainRuntime({ status: t.status, signal: t.signal, exitCode: t.exitCode });
     const failedTags = r.verdict === 'SE' ? [] : [...new Set((r.tests || []).filter(t => t.status !== 'AC').flatMap(t => t.tags || []))];
-    const details = { tests: r.tests, compile: r.compile, compileExplain: explainCompile(r.compile), detail: r.detail, notConfigured: r.notConfigured, steps: r.steps };
+    const details = slimDetails({ tests: r.tests, compile: r.compile, compileExplain: explainCompile(r.compile), detail: r.detail, notConfigured: r.notConfigured, steps: r.steps });
     Q.tx(() => {
       Q.run('INSERT OR REPLACE INTO gradings (submission_id, verdict, passed, total, failed_tags, details, driver) VALUES (?,?,?,?,?,?,?)',
         id, r.verdict, r.passed || 0, r.total || 0, JSON.stringify(failedTags), JSON.stringify(details), r.driver || null);
@@ -141,8 +180,11 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   for (const r of Q.all("SELECT id FROM submissions WHERE status!='done' ORDER BY id")) enqueue(r.id);
 
   // ───────── Ҳисобҳои синф ─────────
+  // Тартиби табиӣ: «Шогирд 2» пеш аз «Шогирд 10»
+  const coll = new Intl.Collator(['tg', 'ru'], { numeric: true, sensitivity: 'base' });
+  const byName = (a, b) => coll.compare(a.name, b.name) || a.id - b.id;
   function members(gid) {
-    return Q.all("SELECT u.id, u.name, u.login FROM group_members m JOIN users u ON u.id=m.user_id WHERE m.group_id=? AND m.status='active' ORDER BY u.name", gid);
+    return Q.all("SELECT u.id, u.name, u.login FROM group_members m JOIN users u ON u.id=m.user_id WHERE m.group_id=? AND m.status='active'", gid).sort(byName);
   }
   function subsFor(uids, pid) {
     if (!uids.length) return [];
@@ -171,7 +213,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     return Q.all('SELECT * FROM lesson_steps WHERE lesson_id=? ORDER BY position', lid).map(s => {
       const payload = J(s.payload) || {};
       let problem = null;
-      if (s.problem_id) { const pr = Q.get('SELECT p.current_version v, pv.data FROM problems p JOIN problem_versions pv ON pv.problem_id=p.id AND pv.version=p.current_version WHERE p.id=?', s.problem_id); if (pr) problem = { id: s.problem_id, title: J(pr.data).title, version: pr.v }; }
+      if (s.problem_id) { const pr = Q.get('SELECT current_version v FROM problems WHERE id=? AND current_version>0', s.problem_id); const d = pr && pvData(s.problem_id, pr.v); if (d) problem = { id: s.problem_id, title: d.title, version: pr.v }; }
       return { id: s.id, position: s.position, kind: s.kind, title: s.title, payload, problem, skipped: !!s.skipped };
     });
   }
@@ -235,7 +277,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     let repeat = null;
     if (topTag) {
       const practice = Q.all('SELECT id, practice_tags, current_version FROM problems WHERE current_version>0').filter(p => (J(p.practice_tags) || []).includes(topTag.tag))
-        .map(p => ({ id: p.id, title: J(Q.get('SELECT data FROM problem_versions WHERE problem_id=? AND version=?', p.id, p.current_version).data).title }));
+        .map(p => ({ id: p.id, title: pvData(p.id, p.current_version).title }));
       const topic = TOPICS.find(t => t.key === l.topic)?.title || l.topic;
       repeat = { topic, tag: topTag.tag, count: topTag.count, subIds: topTag.subIds, practice };
     } else if (hardest && hardest.stuck > 0) {
@@ -259,7 +301,13 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
         const solved = solvedSet(u.id);
         const done = steps.map(s => s.kind === 'problem' ? (s.problem && solved.has(s.problem.id)) : !!Q.get('SELECT 1 FROM step_responses WHERE step_id=? AND user_id=?', s.id, u.id));
         const cur = done.findIndex(d => !d);
-        todayLesson = { ...l, opened: isOpen(l), isToday: dushanbeDate(l.scheduled_at) === today, steps: steps.map((s, i) => ({ id: s.id, title: s.title, kind: s.kind, done: done[i] })), currentStep: cur < 0 ? null : cur + 1 };
+        const ls = lessonSets(l);
+        const cnt = ids => ({ total: ids.length, solved: ids.filter(id => solved.has(id)).length });
+        const ex = l.kind === 'exam' ? examRow(l.id, u.id) : null;
+        todayLesson = { ...l, opened: isOpen(l), isToday: dushanbeDate(l.scheduled_at) === today,
+          steps: steps.map((s, i) => ({ id: s.id, title: s.problem?.title || s.title, kind: s.kind, done: done[i] })), currentStep: cur < 0 ? null : cur + 1,
+          sets: { class: cnt(ls.class), home: cnt(ls.home), extra: cnt(ls.extra) },
+          exam: ex ? { accepted: !!ex.accepted_at, finished: !!ex.finished_at, blocked: !!ex.blocked } : undefined };
       }
     }
     const lastDraft = Q.get('SELECT d.problem_id, d.updated_at FROM drafts d WHERE d.user_id=? ORDER BY d.updated_at DESC LIMIT 1', u.id);
@@ -280,7 +328,20 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     const openList = inPlan.filter(p => acc.open.has(p.id));
     // Пешрафт танҳо аз рӯи масъалаҳои кушодашуда (рӯзҳои пӯшида ҳисоб намешаванд)
     const progress = TOPICS.map(t => { const ps = openList.filter(p => p.topic === t.key); return { topic: t.key, title: t.title, total: ps.length, solved: ps.filter(p => solved.has(p.id)).length }; }).filter(p => p.total > 0);
-    return { groups, todayLesson, continue: cont && acc.open.has(cont.problem_id) ? cont : null, nearestAssignment: nearest, assignments, progress, recommendation: recommend(u.id, solved, openList) };
+    // Вазифаҳои хонагии рӯзҳои кушода, ки ҳанӯз пурра иҷро нашудаанд (аз рӯзи навтарин)
+    const homework = [];
+    for (const gid of active) {
+      let w = 0, d = 0;
+      for (const l of Q.all('SELECT * FROM lessons WHERE group_id=? ORDER BY scheduled_at, number', gid)) {
+        if (d === 0 || d === 6) { w++; d = 0; } d++;
+        if (l.kind === 'exam' || !isOpen(l)) continue;
+        const h = lessonSets(l).home; const n = h.filter(id => solved.has(id)).length;
+        if (h.length && n < h.length) homework.push({ lesson_id: l.id, title: l.title, week: w, day: d, scheduled_at: l.scheduled_at, total: h.length, solved: n });
+      }
+    }
+    homework.sort((a, b) => b.scheduled_at.localeCompare(a.scheduled_at));
+    const contOk = cont && acc.open.has(cont.problem_id) && !acc.exam.has(cont.problem_id);
+    return { groups, todayLesson, continue: contOk ? cont : null, nearestAssignment: nearest, assignments, homework: homework.slice(0, 3), progress, recommendation: recommend(u.id, solved, openList) };
   }
   function recommend(uid, solved, all) {
     const failed = Q.all(`SELECT g.failed_tags, s.problem_id FROM submissions s JOIN gradings g ON g.submission_id=s.id
@@ -364,9 +425,31 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     const t = token(); Q.run('INSERT INTO sessions (token, user_id) VALUES (?,?)', t, id);
     return { cookie: t, user: { id, login, name, role: 'student' } };
   });
-  R('POST', '/api/login', ({ body }) => {
-    const u = Q.get('SELECT * FROM users WHERE login=?', String(body.login || '').trim().toLowerCase());
-    if (!u || !checkPassword(String(body.password || ''), u.pass_hash)) throw bad('Логин ё парол нодуруст аст.');
+  // Ҳимоя аз тахмини парол: пас аз 8 хатои паёпай барои як логин (ё 40 аз як суроға) — 30/10 сония интизорӣ
+  // байни кӯшишҳо. Қулф намешавад: корбари ҳақиқӣ ҳадди аксар 30 сония сабр мекунад.
+  const fails = new Map();
+  const ipOf = req => String(req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || '';
+  function throttled(keys) {
+    const now = Date.now();
+    for (const [k, free, gap] of keys) {
+      const f = fails.get(k);
+      if (f && now - f.first < 15 * 60000 && f.n >= free && now - f.last < gap) return Math.ceil((f.last + gap - now) / 1000);
+    }
+    return 0;
+  }
+  function noteFail(keys) {
+    const now = Date.now();
+    for (const [k] of keys) { const f = fails.get(k); if (!f || now - f.first >= 15 * 60000) fails.set(k, { n: 1, first: now, last: now }); else { f.n++; f.last = now; } }
+    if (fails.size > 10000) for (const [k, f] of fails) if (now - f.first >= 15 * 60000) fails.delete(k);
+  }
+  R('POST', '/api/login', ({ body, req }) => {
+    const login = String(body.login || '').trim().toLowerCase();
+    const keys = [['l:' + login, 8, 30000], ['i:' + ipOf(req), 40, 10000]];
+    const wait = throttled(keys);
+    if (wait) throw new HttpError(429, `Пароли нодуруст бисёр ворид шуд. ${wait} сония сабр кунед ва боз кӯшиш кунед.`, { wait });
+    const u = Q.get('SELECT * FROM users WHERE login=?', login);
+    if (!u || !checkPassword(String(body.password || ''), u.pass_hash)) { noteFail(keys); throw bad('Логин ё парол нодуруст аст.'); }
+    fails.delete('l:' + login);
     const weak = PUBLIC_DEMO_PASSWORDS.has(String(body.password)) ? 1 : 0;
     if (weak !== u.weak_pw) Q.run('UPDATE users SET weak_pw=? WHERE id=?', weak, u.id);
     const t = token(); Q.run('INSERT INTO sessions (token, user_id) VALUES (?,?)', t, u.id);
@@ -448,8 +531,8 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   R('GET', '/api/groups/:id', ({ user, params }) => {
     need(user, 'teacher'); const gid = Number(params.id); if (!ownsGroup(user, gid)) throw forbidden();
     const g = Q.get('SELECT * FROM groups WHERE id=?', gid);
-    const mem = Q.all('SELECT u.id, u.name, u.login, m.status, m.created_at FROM group_members m JOIN users u ON u.id=m.user_id WHERE m.group_id=? ORDER BY m.status, u.name', gid)
-      .map(m => {
+    const mem = Q.all('SELECT u.id, u.name, u.login, m.status, m.created_at FROM group_members m JOIN users u ON u.id=m.user_id WHERE m.group_id=?', gid)
+      .sort((a, b) => a.status.localeCompare(b.status) || byName(a, b)).map(m => {
         const exams = Q.all('SELECT v.lesson_id, l.title, v.count, v.blocked, v.finished_at FROM exam_violations v JOIN lessons l ON l.id=v.lesson_id WHERE v.user_id=? AND l.group_id=? AND (v.blocked=1 OR v.count>0) ORDER BY l.scheduled_at', m.id, gid);
         return { ...m, exams, exam_blocked: exams.filter(e => e.blocked) };
       });
@@ -497,19 +580,34 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     const rows = Q.all(`SELECT s.problem_id pid, COUNT(*) n, SUM(g.verdict='AC') ac, MIN(CASE WHEN g.verdict='AC' THEN s.created_at END) solved_at, MAX(s.id) last_id
       FROM submissions s JOIN gradings g ON g.submission_id=s.id WHERE s.user_id=? AND g.verdict!='SE' GROUP BY s.problem_id`, uid);
     const by = new Map(rows.map(r => [r.pid, r]));
-    const problems = Q.all('SELECT id, topic FROM problems WHERE current_version>0 ORDER BY position, id').map(p => {
-      const r = by.get(p.id); const last = r ? Q.get('SELECT verdict, passed, total, failed_tags FROM gradings WHERE submission_id=?', r.last_id) : null;
-      return { id: p.id, topic: p.topic, title: publicProblem(p.id).title, attempts: r?.n || 0, solved: !!r?.ac, solved_at: r?.solved_at || null, last_id: r?.last_id || null, last: last ? { ...last, failed_tags: J(last.failed_tags) } : null };
-    }).filter(p => p.attempts > 0 || !J(Q.get('SELECT data FROM problem_versions WHERE problem_id=? AND version=(SELECT current_version FROM problems WHERE id=?)', p.id, p.id).data).lessonOnly);
+    // Як сатр барои масъала; масъалаи кӯшишнашуда — танҳо ном (ҷавоб сабук мемонад)
+    const row = pid => {
+      const r = by.get(pid); if (!r) return { id: pid, title: titleOf(pid) };
+      const last = Q.get('SELECT verdict, passed, total, failed_tags FROM gradings WHERE submission_id=?', r.last_id);
+      return { id: pid, title: titleOf(pid), attempts: r.n, solved: !!r.ac, solved_at: r.solved_at || null, last_id: r.last_id, last: last ? { ...last, failed_tags: J(last.failed_tags) } : null };
+    };
+    // Пешрафт аз рӯи рӯзҳои курс (ҳафта → рӯз → синфӣ/хонагӣ/иловагӣ)
+    const inPlan = new Set();
+    let w = 0, d = 0;
+    const days = Q.all('SELECT * FROM lessons WHERE group_id=? ORDER BY scheduled_at, number', gid).map(l => {
+      if (d === 0 || d === 6) { w++; d = 0; } d++;
+      const s = lessonSets(l);
+      [...s.class, ...s.home, ...s.extra].forEach(id => inPlan.add(id));
+      const e = l.kind === 'exam' ? examRow(l.id, uid) : null;
+      return { id: l.id, week: w, day: d, kind: l.kind, title: l.title, scheduled_at: l.scheduled_at, opened: isOpen(l), status: l.status,
+        exam: e ? { accepted: !!e.accepted_at, finished: !!e.finished_at, blocked: !!e.blocked, count: e.count } : undefined,
+        sets: { class: s.class.map(row), home: s.home.map(row), extra: s.extra.map(row) } };
+    });
+    const other = rows.filter(r => !inPlan.has(r.pid)).map(r => row(r.pid));
     const help = Q.all('SELECT question, status, created_at FROM help_requests WHERE user_id=? AND group_id=? ORDER BY id DESC LIMIT 20', uid, gid);
     const asg = Q.all('SELECT * FROM assignments WHERE group_id=? ORDER BY due_at', gid).map(a => ({ id: a.id, title: a.title, due_at: a.due_at, problems: assignmentStatus(a, uid) }));
-    return { student: st, problems, help, assignments: asg };
+    return { student: st, days, other, help, assignments: asg };
   });
   // Натиҷаҳои гурӯҳ барои Excel (CSV)
   R('GET', '/api/groups/:id/export.csv', ({ user, params, res }) => {
     need(user, 'teacher'); const gid = Number(params.id); if (!ownsGroup(user, gid)) throw forbidden();
     const g = Q.get('SELECT name FROM groups WHERE id=?', gid);
-    const ps = Q.all('SELECT id, topic FROM problems WHERE current_version>0 ORDER BY position, id').filter(p => !J(Q.get('SELECT data FROM problem_versions WHERE problem_id=? AND version=?', p.id, Q.get('SELECT current_version v FROM problems WHERE id=?', p.id).v).data).lessonOnly);
+    const ps = Q.all('SELECT id, topic, current_version v FROM problems WHERE current_version>0 ORDER BY position, id').filter(p => !pvData(p.id, p.v).lessonOnly);
     const esc = v => { const t = String(v ?? ''); return /[",;\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
     const head = ['Шогирд', 'Логин', 'Ҳал шуд (ҳамагӣ)', ...TOPICS.map(t => t.title), 'Кӯшишҳо', ...ps.map(p => publicProblem(p.id).title)];
     const lines = [head.map(esc).join(';')];
@@ -859,7 +957,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     const acc = user.role === 'student' ? studentAccess(user.id) : null;
     return Q.all('SELECT * FROM problems ORDER BY position, id').map(p => {
       if (acc && (!acc.open.has(p.id) || acc.exam.has(p.id))) return null;
-      const v = p.current_version ? J(Q.get('SELECT data FROM problem_versions WHERE problem_id=? AND version=?', p.id, p.current_version).data) : (J(p.draft) || {});
+      const v = p.current_version ? pvData(p.id, p.current_version) : (J(p.draft) || {});
       if (user.role === 'student' && !p.current_version) return null;
       return { id: p.id, slug: p.slug, topic: p.topic, title: v.title || 'Масъалаи нав', level: v.level, version: p.current_version, hasDraft: !!p.draft, lessonOnly: !!v.lessonOnly, solved: solved.has(p.id), practice_tags: J(p.practice_tags) };
     }).filter(Boolean);
@@ -873,7 +971,8 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
       return { id: p.id, slug: p.slug, topic: p.topic, current_version: p.current_version, practice_tags: J(p.practice_tags), versions, published: cur, draft: J(p.draft), public: p.current_version ? publicProblem(pid, Number(query.v) || undefined) : null };
     }
     assertProblemAccess(user, pid);
-    return publicProblem(pid, Number(query.v) || undefined);
+    // Масъалаи имтиҳон танҳо дар саҳифаи имтиҳон (бо назорат) кушода мешавад
+    return { ...publicProblem(pid, Number(query.v) || undefined), exam_lesson: studentAccess(user.id).exam.get(pid) };
   });
   R('POST', '/api/problems', ({ user, body }) => {
     need(user, 'teacher');

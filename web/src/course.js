@@ -272,6 +272,10 @@ export function SetPage({ user, lid, kind, idx }) {
 
   if (loading) return html`<${Loading} />`;
   if (blocked) return html`<${Blocked} />`;
+  if (error && !data && error.status === 403) return html`<div class="page"><div class="lockcard" data-testid="locked-day">
+    <div class="lk-ico" aria-hidden="true">🔒</div><h1>Ин рӯз ҳанӯз пӯшида аст</h1>
+    <p class="muted">Вақте устод рӯзро мекушояд, масъалаҳо дар ин ҷо пайдо мешаванд. То он вақт рӯзҳои кушодаро иҷро кунед.</p>
+    <a class="btn p lg" href="#/course">← Ба нақшаи курс</a></div></div>`;
   if (error && !data) return html`<div class="page"><${ErrorBox} error=${error} retry=${reload} /></div>`;
   const L = data.lesson;
   if (user.role === 'teacher') {

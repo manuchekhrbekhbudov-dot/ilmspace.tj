@@ -30,7 +30,11 @@ export function Workspace({ user, pid, lessonId, exam, num, nav, exitHref }) {
 
   // Масъала (бо нусхаи маҳаллӣ барои кор бе интернет)
   useEffect(() => {
-    api(`/api/problems/${pid}`).then(p => { setProblem(p); store.set(`prob:${pid}`, p); setLoadErr(null); })
+    api(`/api/problems/${pid}`).then(p => {
+      // Масъалаи имтиҳон бе назорат кушода намешавад — ба саҳифаи имтиҳон мегузаронем
+      if (p.exam_lesson && !exam) { location.replace(`#/set/${p.exam_lesson}/class`); return; }
+      setProblem(p); if (!p.exam_lesson) store.set(`prob:${pid}`, p); setLoadErr(null);
+    })
       .catch(e => { if (!store.get(`prob:${pid}`)) setLoadErr(e); });
   }, [pid]);
 

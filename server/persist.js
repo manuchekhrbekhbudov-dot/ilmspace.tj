@@ -8,12 +8,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import { promisify } from 'node:util';
+
+const gzip = promisify(zlib.gzip);  // фишурдан дар пасманзар — сервер дар ин муддат бозмонда намешавад
 
 const INTERVAL = Number(process.env.SNAPSHOT_SECONDS || 10) * 1000;
 let client = null;
 let ctx = null;            // { db, dbFile } — пас аз startSync
 let retryPending = false;  // пайвасти аввал нашуд — дар пасманзар боз кӯшиш мекунем
-const state = { mode: 'local', lastSaved: null, lastError: null, bytes: 0, retrying: false };
+const state = { mode: 'local', lastSaved: null, lastError: null, bytes: 0, retrying: false, lastMs: 0, interval: INTERVAL / 1000 };
 
 export function persistStatus() { return { ...state, connection: connectionInfo() }; }
 
@@ -169,16 +172,27 @@ function beginSync() {
   const { db, dbFile } = ctx;
   let lastChanges = -1;
   const tmp = dbFile + '.snapshot';
+  let lastTouch = Date.now();
   async function doSave(force) {
     try {
       const n = db.prepare('SELECT total_changes() AS n').get().n;
-      if (!force && n === lastChanges) return;
+      if (!force && n === lastChanges) {
+        // База дар Supabase-и ройгон пас аз 7 рӯзи бекорӣ «хоб» меравад — ҳар 12 соат як дархости хурд
+        if (Date.now() - lastTouch > 12 * 3600e3) {
+          lastTouch = Date.now();
+          if (!client) client = await connect();
+          await client.query('SELECT updated_at FROM codelab.snapshot WHERE id=1');
+        }
+        return;
+      }
       fs.rmSync(tmp, { force: true });
-      db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);
-      const data = zlib.gzipSync(fs.readFileSync(tmp), { level: 6 });
+      const t0 = Date.now();
+      db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`);   // ягона қисми ҳамзамон (сервер дар ин муддат интизор аст)
+      state.lastMs = Date.now() - t0;
+      const data = await gzip(fs.readFileSync(tmp), { level: 6 });
       if (!client) client = await connect();
       await client.query('INSERT INTO codelab.snapshot (id, data, updated_at) VALUES (1, $1, now()) ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data, updated_at=now()', [data]);
-      lastChanges = n; state.lastSaved = new Date().toISOString(); state.bytes = data.length; state.lastError = null; state.mode = 'postgres';
+      lastChanges = n; lastTouch = Date.now(); state.lastSaved = new Date().toISOString(); state.bytes = data.length; state.lastError = null; state.mode = 'postgres';
     } catch (e) {
       state.lastError = friendly(e); console.error('Postgres: нусха фиристода нашуд —', e.message);
       try { await client?.end(); } catch {}
@@ -189,7 +203,14 @@ function beginSync() {
   let chain = Promise.resolve();
   const save = (force = false) => (chain = chain.then(() => doSave(force)));
   save(true);
-  setInterval(() => save(), INTERVAL).unref();
+  // Фосила мувофиқи андозаи база: агар нусхабардорӣ дароз шавад (базаи калон), камтар такрор мекунем,
+  // то сервер барои шогирдон суст нашавад (ҳадди аксар 1 дақиқа).
+  const tick = () => {
+    const next = Math.min(60000, Math.max(INTERVAL, state.lastMs * 40));
+    state.interval = Math.round(next / 1000);
+    setTimeout(() => { save().finally(tick); }, next).unref();
+  };
+  tick();
   const stop = async sig => {
     console.log(`${sig}: нусхаи охирин фиристода мешавад…`);
     await Promise.race([save(true), new Promise(r => setTimeout(r, 20000))]);

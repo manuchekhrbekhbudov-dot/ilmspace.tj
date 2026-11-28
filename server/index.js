@@ -32,3 +32,15 @@ server.listen(port, () => {
   if (j.warning) console.log('ДИҚҚАТ: ' + j.warning);
   console.log(persistStatus().mode === 'postgres' ? 'Маълумот: SQLite + нусхаи доимӣ дар Postgres' : `Маълумот: SQLite (${dbFile})`);
 });
+
+// Render-и ройгон пас аз 15 дақиқаи бе боздид сайтро «хоб» мекунад ва кушодани аввал ~1 дақиқа тӯл мекашад.
+// Дар соатҳои дарс (07:00–21:00, вақти Душанбе) сайт ҳар 10 дақиқа худашро мепурсад ва бедор мемонад.
+// Хомӯш кардан: KEEPALIVE=0. Соатҳо: KEEPALIVE_HOURS=7-21.
+const selfUrl = process.env.RENDER_EXTERNAL_URL;
+if (selfUrl && process.env.KEEPALIVE !== '0') {
+  const [from, to] = String(process.env.KEEPALIVE_HOURS || '7-21').split('-').map(Number);
+  setInterval(() => {
+    const h = (new Date().getUTCHours() + 5) % 24;   // Душанбе: UTC+5
+    if (h >= from && h < to) fetch(selfUrl.replace(/\/$/, '') + '/api/health', { signal: AbortSignal.timeout(30000) }).catch(() => {});
+  }, 10 * 60 * 1000).unref();
+}

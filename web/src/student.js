@@ -25,11 +25,19 @@ export function StudentHome({ user }) {
           <div class="kicker">🔒 ${L.isToday ? 'Дарси имрӯз' : 'Дарси навбатӣ'} · ${fWeekday(L.scheduled_at)}, ${fDate(L.scheduled_at)}, ${fTime(L.scheduled_at)}</div>
           <h1 style="margin:6px 0">${L.title}</h1>
           <div class="muted">Ин рӯз ҳанӯз пӯшида аст. Вақте устод онро мекушояд, масъалаҳо пайдо мешаванд.</div>
+        </div>` : L && L.kind === 'exam' ? html`<div class="card hl" style="padding:22px">
+          <div class="kicker">🛡️ Имтиҳон · ${fWeekday(L.scheduled_at)}, ${fDate(L.scheduled_at)}, ${fTime(L.scheduled_at)}</div>
+          <h1 style="margin:6px 0">${L.title}</h1>
+          <div class="muted">${L.exam?.blocked ? 'Шумо аз ин имтиҳон блок шудед — ба устод муроҷиат кунед.' : L.exam?.finished ? 'Шумо имтиҳонро тамом кардед. Натиҷаро бинед.' : `3 қисм: A, B ва мураккаб — ҳамагӣ ${L.sets.class.total + L.sets.home.total + L.sets.extra.total} масъала, ҳар кадом 10 хол.`}</div>
+          <div style="margin-top:16px"><a class="btn p lg" href=${`#/set/${L.id}/class`}>${L.exam?.finished ? 'Натиҷа' : L.exam?.accepted ? 'Идомаи имтиҳон' : 'Ба имтиҳон'} →</a></div>
         </div>` : L ? html`<div class="card hl" style="padding:22px">
           <div class="kicker">${L.status === 'live' ? '● Дарс ҳозир меравад' : L.isToday ? 'Дарси имрӯз' : 'Дарси навбатӣ'} · ${fWeekday(L.scheduled_at)}, ${fDate(L.scheduled_at)}, ${fTime(L.scheduled_at)}</div>
           <h1 style="margin:6px 0">${L.title}</h1>
-          <div class="muted">${L.steps.length} қадам${L.currentStep ? ` · ту дар қадами ${L.currentStep} — «${L.steps[L.currentStep - 1].title}»` : L.steps.length ? ' · ҳамаи қадамҳо иҷро шуданд' : ''}</div>
-          <div style="margin-top:16px"><a class="btn p lg" href=${'#/lesson/' + L.id}>${L.status === 'live' ? (L.currentStep > 1 ? 'Идома деҳ' : 'Оғоз кун') : 'Кушо'}</a></div>
+          <div class="muted">${L.currentStep ? html`Масъалаи навбатӣ: <b>${L.currentStep}. ${L.steps[L.currentStep - 1].title}</b>` : L.steps.length ? '🎉 Ҳамаи масъалаҳои синфӣ ҳал шуданд!' : ''}</div>
+          <div class="todaysets">${[['class', 'Синфӣ'], ['home', 'Хонагӣ'], ['extra', 'Иловагӣ']].filter(([k]) => L.sets?.[k]?.total).map(([k, n]) => html`<a class=${'tset' + (L.sets[k].solved === L.sets[k].total ? ' done' : '')} href=${`#/set/${L.id}/${k}`}><b>${n}</b><span>${L.sets[k].solved}/${L.sets[k].total}</span></a>`)}</div>
+          <div style="margin-top:14px">${L.status === 'live'
+            ? html`<a class="btn p lg" href=${'#/lesson/' + L.id}>${L.currentStep > 1 ? 'Идома деҳ' : 'Оғоз кун'}</a>`
+            : html`<a class="btn p lg" href=${`#/set/${L.id}/class/${Math.max(0, (L.currentStep || 1) - 1)}`}>${L.currentStep > 1 ? 'Идома деҳ' : 'Кушо'}</a>`}</div>
         </div>` : html`<div class="card"><div class="kicker">Дарси имрӯз</div><p style="margin-top:6px">Имрӯз дарс нест. Аз ҷои охирин идома деҳ ё машқ кун.</p></div>`}
         <a class="card setcard" href="#/course"><div class="row"><span class="seticon">▦</span><div style="flex:1"><b>Нақшаи курс</b><div class="muted small">Ҳафтаҳо, рӯзҳо ва вазифаҳои синфӣ, хонагӣ ва иловагӣ</div></div><span>→</span></div></a>
         <div class="card">
@@ -38,10 +46,11 @@ export function StudentHome({ user }) {
             : html`<div class="muted" style="margin-top:6px">Ҳанӯз масъала накушодаӣ.</div>`}
         </div>
         <div class="card">
-          <div class="kicker">Вазифаи наздиктарин</div>
-          ${A ? html`<div style="margin-top:6px"><div class="row"><b>${A.title}</b><span class="chip warn">муҳлат: ${fWeekday(A.due_at)}, ${fDateTime(A.due_at)} (вақти Душанбе)</span></div>
-              <table class="t" style="margin-top:8px"><tbody>${A.problems.map(p => html`<tr><td><a href=${'#/p/' + p.problem_id}>${p.title}</a></td><td style="text-align:right"><${AsgState} s=${p.state} /></td></tr>`)}</tbody></table></div>`
-            : html`<div class="muted" style="margin-top:6px">Вазифаи хонагии кушода нест.</div>`}
+          <div class="kicker">Вазифаи хонагӣ</div>
+          ${(data.homework || []).map(h => html`<a class="hwrow" href=${`#/set/${h.lesson_id}/home`}><span><b>Ҳ${h.week} · Рӯзи ${h.day}</b> <span class="muted">${h.title}</span></span><span class="hwn">${h.solved}/${h.total}</span><span aria-hidden="true">→</span></a>`)}
+          ${A && html`<div style="margin-top:8px"><div class="row"><b>${A.title}</b><span class="chip warn">муҳлат: ${fWeekday(A.due_at)}, ${fDateTime(A.due_at)} (вақти Душанбе)</span></div>
+              <table class="t" style="margin-top:8px"><tbody>${A.problems.map(p => html`<tr><td><a href=${'#/p/' + p.problem_id}>${p.title}</a></td><td style="text-align:right"><${AsgState} s=${p.state} /></td></tr>`)}</tbody></table></div>`}
+          ${!A && !(data.homework || []).length && html`<div class="muted" style="margin-top:6px">Ҳамаи вазифаҳои хонагии рӯзҳои кушода иҷро шудаанд. 👍</div>`}
         </div>
       </div>
       <div class="col" style="gap:18px">
@@ -75,25 +84,39 @@ function JoinCard({ pending, onDone, login }) {
 
 export function ProblemsList({ user }) {
   const [{ data, loading, error }, reload] = useLoad(() => api('/api/problems'));
+  const [q, setQ] = useState(''); const [topic, setTopic] = useState(''); const [todo, setTodo] = useState(false); const [more, setMore] = useState({});
   if (loading) return html`<${Loading} />`;
   if (error) return html`<div class="page"><${ErrorBox} error=${error} retry=${reload} /></div>`;
   const teacher = user.role === 'teacher';
-  const groups = Object.keys(TOPIC).map(k => [k, data.filter(p => p.topic === k)]);
+  const nq = q.trim().toLowerCase();
+  const shown = data.filter(p => (!topic || p.topic === topic) && (!todo || !p.solved) && (!nq || p.title.toLowerCase().includes(nq) || String(p.id) === nq));
+  const groups = Object.keys(TOPIC).filter(k => !topic || k === topic).map(k => [k, shown.filter(p => p.topic === k)]).filter(([, ps]) => ps.length);
+  const LIM = 30;
   return html`<div class="page">
-    <div class="row" style="margin-bottom:16px"><h1>Масъалаҳо</h1><div class="spacer"></div>
+    <div class="row" style="margin-bottom:12px"><h1>Масъалаҳо</h1><span class="chip">${data.length}</span><div class="spacer"></div>
       ${teacher && html`<button class="btn p" onClick=${async () => { const r = await api('/api/problems', { method: 'POST', body: { topic: 'io' } }); location.hash = '#/problem/' + r.id + '/edit'; }}>+ Масъалаи нав</button>`}</div>
-    <div class="grid3">${groups.map(([k, ps]) => html`<div class="card">
-      <div class="row"><h3 style="margin:0">${TOPIC[k]}</h3><div class="spacer"></div>${!teacher && html`<span class="muted small">${ps.filter(p => p.solved).length} аз ${ps.length}</span>`}</div>
+    <div class="pfilter">
+      <input class="i" type="search" placeholder="Ҷустуҷӯ: номи масъала…" value=${q} onInput=${e => setQ(e.target.value)} aria-label="Ҷустуҷӯи масъала" data-testid="psearch" />
+      <div class="pchips" role="group" aria-label="Мавзӯъ">
+        <button class=${'chipbtn' + (!topic ? ' on' : '')} aria-pressed=${!topic} onClick=${() => setTopic('')}>Ҳама</button>
+        ${Object.keys(TOPIC).filter(k => data.some(p => p.topic === k)).map(k => html`<button class=${'chipbtn' + (topic === k ? ' on' : '')} aria-pressed=${topic === k} onClick=${() => setTopic(topic === k ? '' : k)}>${TOPIC[k]}</button>`)}
+        ${!teacher && html`<label class="chipbtn"><input type="checkbox" checked=${todo} onChange=${e => setTodo(e.target.checked)} /> Танҳо ҳалнашуда</label>`}
+      </div>
+    </div>
+    ${!groups.length && html`<div class="card"><${Empty} title="Чизе ёфт нашуд">Калимаи дигарро санҷед ё филтрро тоза кунед.<//></div>`}
+    <div class="grid3">${groups.map(([k, ps]) => { const lim = more[k] || nq ? ps.length : LIM; return html`<div class="card">
+      <div class="row"><h3 style="margin:0">${TOPIC[k]}</h3><div class="spacer"></div><span class="muted small">${teacher ? `${ps.length} масъала` : `${ps.filter(p => p.solved).length} аз ${ps.length}`}</span></div>
       <div class="sep"></div>
-      ${ps.length ? ps.map(p => html`<div class="row" style="padding:5px 0;gap:8px">
+      ${ps.slice(0, lim).map(p => html`<div class="row" style="padding:5px 0;gap:8px">
         <a href=${teacher ? `#/problem/${p.id}/edit` : `#/p/${p.id}`}>${p.title}</a>
         <span class="chip">${p.level || '—'}</span>
         ${p.solved && html`<span class="v v-ok">✓</span>`}
         ${teacher && !p.version && html`<span class="chip warn">нашр нашудааст</span>`}
         ${teacher && p.hasDraft && p.version > 0 && html`<span class="chip warn">тағйироти нашрнашуда</span>`}
         ${teacher && p.lessonOnly && html`<span class="chip">дарсӣ</span>`}
-      </div>`) : html`<div class="muted small">Масъала нест.</div>`}
-    </div>`)}</div>
+      </div>`)}
+      ${ps.length > lim && html`<button class="btn sm" style="margin-top:8px" onClick=${() => setMore({ ...more, [k]: true })}>Боз ${ps.length - lim} масъала нишон деҳ</button>`}
+    </div>`; })}</div>
   </div>`;
 }
 
