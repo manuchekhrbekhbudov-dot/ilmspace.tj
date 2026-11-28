@@ -610,3 +610,52 @@ a.chip:hover { text-decoration: none; filter: brightness(1.1); }
 .pwrow { display: flex; align-items: center; gap: 16px; padding: 14px 18px; border-radius: 14px; border: 2px solid var(--acc); background: var(--acc-soft); }
 .pwrow span { min-width: 70px; color: var(--muted); font-size: 16px; }
 .pwrow b { font-size: 30px; letter-spacing: .04em; word-break: break-all; }
+
+/* ───── Намуди нарм (рангҳои ором, бе сабзи тез ва сурхи тунд) ───── */
+:root, :root[data-theme="dark"] {
+  --bg: #121927; --panel: #182134; --panel2: #1d273d; --panel3: #263149; --line: #2b3650; --text: #e4e9f1; --muted: #9ba7bb;
+  --acc: #74d3c3; --acc-ink: #0c2925; --acc-soft: rgba(116,211,195,.11);
+  --ok: #8fd6a8; --bad: #eea4a4; --warn: #efcd83; --info: #a3c4f3; --violet: #c3b5f5;
+  --ok-bg: rgba(143,214,168,.11); --bad-bg: rgba(238,164,164,.11); --warn-bg: rgba(239,205,131,.11); --info-bg: rgba(163,196,243,.11);
+  --shadow: 0 8px 24px rgba(0,0,0,.26);
+  --glow: radial-gradient(900px 500px at 0% -10%, rgba(116,211,195,.06), transparent 60%);
+}
+:root[data-theme="light"] {
+  --bg: #f5f7f8; --panel: #ffffff; --panel2: #f2f5f7; --panel3: #e8edf0; --line: #dde3e8; --text: #1f2a33; --muted: #5f6b77;
+  --acc: #1e8a7e; --acc-soft: rgba(30,138,126,.08);
+  --ok: #2f855a; --bad: #c0504d; --warn: #9a6700; --info: #2f6bb3;
+  --ok-bg: #eaf6ef; --bad-bg: #fbeeee; --warn-bg: #fbf3e2; --info-bg: #ebf1fb;
+  --shadow: 0 6px 20px rgba(20,30,40,.08);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f5f7f8; --panel: #ffffff; --panel2: #f2f5f7; --panel3: #e8edf0; --line: #dde3e8; --text: #1f2a33; --muted: #5f6b77;
+    --acc: #1e8a7e; --acc-soft: rgba(30,138,126,.08);
+    --ok: #2f855a; --bad: #c0504d; --warn: #9a6700; --info: #2f6bb3;
+    --ok-bg: #eaf6ef; --bad-bg: #fbeeee; --warn-bg: #fbf3e2; --info-bg: #ebf1fb;
+    --shadow: 0 6px 20px rgba(20,30,40,.08);
+  }
+}
+/* Сарлавҳаи масъала: матни оддӣ, танҳо рақам ранга */
+.wsx-title { font-weight: 700; }
+.wsx-title .ttl { color: var(--text); }
+.wsx-title .num { color: var(--acc); }
+.wsx-exit { color: var(--muted); font-weight: 600; border: 1px solid var(--line); }
+.wsx-exit:hover { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.wsx, .setside { border-radius: 22px; }
+.sample { border-color: color-mix(in srgb, var(--line) 70%, transparent); }
+.sample-pre { background: color-mix(in srgb, var(--panel2) 55%, var(--bg)); border-color: color-mix(in srgb, var(--line) 70%, transparent); }
+/* Рӯйхати масъалаҳо: масъалаи кушода — заминаи нарм, на сабзи тунд */
+.setitem { font-weight: 600; }
+.setitem .n, .setitem.solved .n { border: 1.5px solid var(--line); color: var(--muted); background: transparent; }
+.setitem.solved .n { border-color: color-mix(in srgb, var(--ok) 45%, transparent); color: var(--ok); }
+.setitem .ok { background: var(--ok-bg); color: var(--ok); border: 1.5px solid color-mix(in srgb, var(--ok) 50%, transparent); font-weight: 800; }
+.setitem .ok.no { background: transparent; border: 1.5px solid var(--line); }
+.setitem.on { background: var(--acc-soft); border-color: color-mix(in srgb, var(--acc) 45%, transparent); color: var(--text); box-shadow: inset 3px 0 0 var(--acc); }
+.setitem.on .n { border-color: var(--acc); color: var(--acc); background: transparent; }
+.setitem.on .ok { background: var(--ok-bg); color: var(--ok); border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
+.setitem.on .ok.no { background: transparent; border-color: var(--line); }
+.settab.on { color: var(--text); }
+.settab.on small { color: var(--acc); }
+.progcard .bar > i, .bar > i { border-radius: 99px; }
+.pico { background: var(--warn-bg); }

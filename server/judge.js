@@ -142,26 +142,40 @@ function compilePrefix() {
   return pre;
 }
 
-// <bits/stdc++.h>-и пешакӣ компилятсияшуда: компилятсияро ~3 маротиба тез мекунад (махсусан дар Render)
+// Сарлавҳаҳои пешакӣ компилятсияшуда (PCH): компилятсияро 2–3 маротиба тез мекунанд (махсусан дар Render).
+//  • <iostream> — қариб ҳамаи шогирдон барномаро бо #include <iostream> оғоз мекунанд; зуд сохта мешавад.
+//  • <bits/stdc++.h> — калон; дар пасманзар бо афзалияти паст сохта мешавад ва санҷиши шогирдонро бознамедорад.
 const PCH_DIR = path.join(WORK, 'pch');
-let pchReady = false, pchStarted = false;
-export function pchStatus() { return pchReady ? 'ready' : pchStarted ? 'building' : 'off'; }
+let pchReady = false, ioReady = false, pchStarted = false;
+export function pchStatus() { return pchReady ? 'ready' : ioReady ? 'iostream' : pchStarted ? 'building' : 'off'; }
+// g++ бо афзалияти паст (nice), то компилятсияи шогирдон пеш равад; агар nice набошад — бе он
+async function gppLow(level, args, opts) {
+  const r = await sh('nice', ['-n', String(level), 'g++', ...args], opts);
+  return r.spawnError ? sh('g++', args, opts) : r;
+}
 export function ensurePch() {
   if (pchStarted || process.env.JUDGE_PCH === '0' || judgeConfig().driver !== 'local' || !hasGpp()) return;
   pchStarted = true;
   (async () => {
-    const release = await slot();
     try {
+      fs.mkdirSync(PCH_DIR, { recursive: true, mode: 0o755 });
+      const io = path.join(PCH_DIR, 'iostream');
+      fs.writeFileSync(io, '#ifndef ILMSPACE_IOSTREAM_PCH\n#define ILMSPACE_IOSTREAM_PCH\n#include_next <iostream>\n#endif\n');
+      fs.chmodSync(io, 0o644);
+      const ri = await gppLow(5, [...COMPILE_FLAGS, '-x', 'c++-header', io, '-o', io + '.gch.tmp'], { timeoutMs: 300000, maxOut: 1 << 20 });
+      if (ri.code === 0) { fs.renameSync(io + '.gch.tmp', io + '.gch'); fs.chmodSync(io + '.gch', 0o644); ioReady = true; console.log(`Санҷанда: <iostream> пешакӣ компилятсия шуд (${Math.round(ri.ms / 1000)} с).`); }
+      else console.error('Санҷанда: PCH-и iostream сохта нашуд —', ri.err.slice(0, 200));
+
       const probe = await sh('g++', ['-std=c++17', '-x', 'c++', '-fsyntax-only', '-H', '-'], { input: '#include <bits/stdc++.h>\n', timeoutMs: 300000, maxOut: 1 << 16 });
       const line = probe.err.split('\n').map(l => l.trim()).find(l => /^\. .*stdc\+\+\.h$/.test(l));
       if (!line) return;
       const hdr = path.join(PCH_DIR, 'bits', 'stdc++.h');
       fs.mkdirSync(path.dirname(hdr), { recursive: true, mode: 0o755 });
       fs.copyFileSync(line.slice(2), hdr);
-      const r = await sh('g++', [...COMPILE_FLAGS, '-x', 'c++-header', hdr, '-o', hdr + '.gch.tmp'], { timeoutMs: 900000, maxOut: 1 << 20 });
+      const r = await gppLow(19, [...COMPILE_FLAGS, '-x', 'c++-header', hdr, '-o', hdr + '.gch.tmp'], { timeoutMs: 900000, maxOut: 1 << 20 });
       if (r.code === 0) { fs.renameSync(hdr + '.gch.tmp', hdr + '.gch'); fs.chmodSync(hdr + '.gch', 0o644); pchReady = true; console.log(`Санҷанда: <bits/stdc++.h> пешакӣ компилятсия шуд (${Math.round(r.ms / 1000)} с).`); }
       else console.error('Санҷанда: PCH сохта нашуд —', r.err.slice(0, 200));
-    } catch (e) { console.error('Санҷанда: PCH —', e.message); } finally { release(); }
+    } catch (e) { console.error('Санҷанда: PCH —', e.message); }
   })();
 }
 
@@ -177,7 +191,7 @@ async function localCompile(code) {
   const I = isolation();
   if (I.setpriv) { try { fs.chownSync(dir, 65534, 65534); } catch {} }
   const pre = compilePrefix();
-  const args = [...COMPILE_FLAGS, ...(pchReady ? ['-I', PCH_DIR] : []), ...(I.static ? ['-static'] : []), '-o', EXE, 'main.cpp'];
+  const args = [...COMPILE_FLAGS, ...(pchReady || ioReady ? ['-I', PCH_DIR] : []), ...(I.static ? ['-static'] : []), '-o', EXE, 'main.cpp'];
   const full = [...pre, 'g++', ...args];
   const r = await sh(full[0], full.slice(1), { cwd: dir, timeoutMs: COMPILE_WALL_MS, maxOut: 1 << 20, killAs: I.setpriv ? NOBODY : null });
   let res;
