@@ -63,11 +63,11 @@ export function seedProblems(Q, ownerId) {
   }
 }
 
-// Курси 1-моҳа аз content/*.py → seed/course.json (220 масъала, 24 рӯз)
+// Курси 1-моҳа аз content/*.py → seed/course.json (720 масъала, 24 рӯз)
 //   Ҳафтаи 1: + − × / %, чоп · Ҳафтаи 2: if/else · Ҳафтаи 3: while ва тақсим · Ҳафтаи 4: for
-// Ҳар рӯзи дарс: 4 синфӣ, 3 хонагӣ, 3 иловагӣ. Имтиҳон: A (2), B (2), мураккаб (1).
+// Ҳар рӯзи дарс: 10 синфӣ, 10 хонагӣ, 10 иловагӣ. Имтиҳон: A (10), B (10), мураккаб (10).
 export const COURSE = JSON.parse(fs.readFileSync(new URL('./seed/course.json', import.meta.url), 'utf8'));
-export const COURSE_VERSION = '2';
+export const COURSE_VERSION = '3';
 
 export function seedCourse(Q, ownerId) {
   const hintsOf = new Map();
@@ -80,9 +80,8 @@ export function seedCourse(Q, ownerId) {
 }
 
 export function coursePlan() {
-  return COURSE.days.map(d => d.kind === 'exam'
-    ? { kind: 'exam', week: d.week, day: d.day, title: d.title, topic: d.topic, class: d.ids.slice(0, 2), home: d.ids.slice(2, 4), extra: d.ids.slice(4) }
-    : { kind: 'lesson', week: d.week, day: d.day, title: d.title, topic: d.topic, class: d.ids.slice(0, 4), home: d.ids.slice(4, 7), extra: d.ids.slice(7) });
+  return COURSE.days.map(d => ({ kind: d.kind === 'exam' ? 'exam' : 'lesson', week: d.week, day: d.day, title: d.title, topic: d.topic,
+    class: d.ids.slice(0, 10), home: d.ids.slice(10, 20), extra: d.ids.slice(20, 30) }));
 }
 
 // Як дарсро аз рӯи нақша пур мекунад (маҷмӯаҳо ва қадамҳои масъала)
@@ -95,7 +94,8 @@ export function fillLesson(Q, lessonId, p) {
     lessonId, j + 1, p.kind === 'exam' ? 'Имтиҳон A' : 'Масъалаи синфӣ', pid));
 }
 
-// Муҳоҷират: курси навро ба базаи мавҷуда (Supabase) мегузорад. Дарсҳои оғознашуда ва пӯшида аз нав пур мешаванд.
+// Муҳоҷират: курси навро ба базаи мавҷуда (Supabase) мегузорад. Ҳамаи рӯзҳо аз нав пур мешаванд (10 + 10 + 10),
+// ғайр аз дарси оддие, ки ҳозир «зинда» меравад (онро баъд бо «↺ Аз нақшаи курс» пур кардан мумкин). Пешрафти шогирдон гум намешавад.
 export function migrateCourse(Q) {
   Q.run('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)');
   if (Q.get("SELECT value FROM meta WHERE key='course_version'")?.value === COURSE_VERSION) return false;
@@ -105,7 +105,7 @@ export function migrateCourse(Q) {
     const plan = coursePlan();
     for (const g of Q.all('SELECT id FROM groups')) {
       Q.all('SELECT * FROM lessons WHERE group_id=? ORDER BY scheduled_at, number', g.id).forEach((l, i) => {
-        if (l.status === 'planned' && !l.opened) fillLesson(Q, l.id, plan[i % plan.length]);
+        if (!(l.status === 'live' && l.kind !== 'exam')) fillLesson(Q, l.id, plan[i % plan.length]);
       });
     }
     Q.run("INSERT INTO meta (key, value) VALUES ('course_version', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", COURSE_VERSION);

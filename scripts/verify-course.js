@@ -7,7 +7,9 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const course = JSON.parse(fs.readFileSync(path.join(root, 'server/seed/course.json'), 'utf8'));
 let bad = 0, n = 0;
 const rows = [];
-const queue = [...course.problems];
+// VERIFY_ONLY=w1d1-1,w1e — танҳо масъалаҳое, ки slug-ашон бо яке аз инҳо сар мешавад (ҳисобот навишта намешавад)
+const only = (process.env.VERIFY_ONLY || '').split(',').map(s => s.trim()).filter(Boolean);
+const queue = course.problems.filter(p => !only.length || only.some(o => p.slug.startsWith(o)));
 async function worker() {
   while (queue.length) {
     const p = queue.shift();
@@ -20,7 +22,7 @@ async function worker() {
 }
 await Promise.all([worker(), worker(), worker(), worker()]);
 rows.sort((a, b) => a.slug.localeCompare(b.slug, 'en', { numeric: true }));
-fs.writeFileSync(path.join(root, 'docs/verification-course.md'), ['# Курси 4-ҳафтаина: санҷиши 220 масъала', '', `Сана: ${new Date().toISOString()} · Ҳалли C++ (g++) бо ҷавобҳои ҳалли мустақили Python муқоиса шуд.`, '',
+if (!only.length) fs.writeFileSync(path.join(root, 'docs/verification-course.md'), [`# Курси 4-ҳафтаина: санҷиши ${n} масъала`, '', `Сана: ${new Date().toISOString()} · Ҳалли C++ (g++) бо ҷавобҳои ҳалли мустақили Python муқоиса шуд.`, '',
   '| Масъала | Ном | Тестҳо | Натиҷа |', '|---|---|---|---|', ...rows.map(r => `| ${r.slug} | ${r.title} | ${r.tests} | ${r.ok ? 'OK' : 'ХАТО'} |`), ''].join('\n'));
 console.log(`\n${n - bad}/${n} масъала мувофиқ`);
 process.exit(bad ? 1 : 0);

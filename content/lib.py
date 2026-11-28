@@ -3,6 +3,25 @@ import random, json
 PROBLEMS = []   # dict-ҳо
 DAYS = []       # {week, day, kind, title, topic, hints, ids:[...]}
 _cur = None
+LEVEL = [None]   # сатҳи пешфарз барои масъалаҳои нав (Миёна / Душвор)
+
+def use(week, d):
+    """Ба рӯзи мавҷуда масъала илова кардан."""
+    global _cur
+    _cur = next(x for x in DAYS if x['week'] == week and x['day'] == d)
+
+def lvl(name):
+    LEVEL[0] = name
+
+def exam_order(week):
+    """Имтиҳон: A (10) + B (10) + мураккаб (10). Масъалаҳои кӯҳна: e-1,2 → A; e-3,4 → B; e-5 → мураккаб."""
+    d = next(x for x in DAYS if x['week'] == week and x['kind'] == 'exam')
+    ids = d['ids']; p = f'w{week}e'
+    A = [f'{p}-1', f'{p}-2'] + [s for s in ids if s.startswith(f'{p}A-')]
+    B = [f'{p}-3', f'{p}-4'] + [s for s in ids if s.startswith(f'{p}B-')]
+    X = [f'{p}-5'] + [s for s in ids if s.startswith(f'{p}X-')]
+    assert len(A) == 10 and len(B) == 10 and len(X) == 10, (week, len(A), len(B), len(X))
+    d['ids'] = A + B + X
 
 def day(week, d, title, topic, hints, kind='lesson'):
     global _cur
@@ -22,7 +41,7 @@ def P(slug, title, text, inp, out, cpp, py, tests, gen=None, n=10, why=None, lev
         if x not in ins: ins.append(x)
     PROBLEMS.append(dict(slug=slug, title=title, statement=text, input=inp, output=out,
                          solution=prog(cpp, inc) if not cpp.lstrip().startswith('#') else cpp,
-                         py=py, ins=ins, why=why, level=level or ('Осон' if len(_cur['ids']) < 4 else 'Миёна' if len(_cur['ids']) < 7 else 'Душвор'),
+                         py=py, ins=ins, why=why, level=level or LEVEL[0] or ('Осон' if len(_cur['ids']) < 4 else 'Миёна' if len(_cur['ids']) < 7 else 'Душвор'),
                          topic=_cur['topic']))
     _cur['ids'].append(slug)
 

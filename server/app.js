@@ -7,7 +7,7 @@ import { openDb, q } from './db.js';
 import { judgeAll, runOnce, judgeStatus, normalizeOutput, queueDepth } from './judge.js';
 import { persistStatus } from './persist.js';
 import { explainCompile, explainRuntime } from './explain.js';
-import { seedDemo, createGroup, applyTemplate, problemData, ensureTeacher, migrateCourse, coursePlan, fillLesson } from './seed.js';
+import { seedDemo, createGroup, applyTemplate, problemData, ensureTeacher, migrateCourse, coursePlan, fillLesson, COURSE } from './seed.js';
 import { TOPICS, DEFAULT_STARTER } from './seed/problems.js';
 import { HttpError, bad, forbidden, notFound, J, token, hashPassword, checkPassword, inviteCode, dushanbeDate, localToUtcIso } from './util.js';
 
@@ -22,7 +22,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   const db = openDb(dbFile);
   const Q = q(db);
   if (seed) seedDemo(Q);
-  if (migrateCourse(Q)) console.log('Курси нав (220 масъала) ба база илова шуд.');
+  if (migrateCourse(Q)) console.log(`Курси нав (${COURSE.problems.length} масъала) ба база илова шуд.`);
   const t = ensureTeacher(Q);
   if (t) console.log(`Ҳисоби устод омода аст: ${t.login}${t.fromDemo ? ' (гурӯҳҳо ва дарси омода ба он гузаштанд)' : ''}`);
   // Ҳисобҳое, ки ҳанӯз пароли намоишии оммавӣ доранд (устодҳо ва ҳисобҳои намоишӣ)

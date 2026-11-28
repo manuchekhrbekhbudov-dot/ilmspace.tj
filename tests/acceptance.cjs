@@ -437,9 +437,11 @@ async function main() {
     await api(T.page, 'POST', `/api/lessons/${closedDay.id}/open`, { opened: true });
     const setsAfter = await api(S2.page, 'GET', `/api/lessons/${closedDay.id}/sets`);
     const cnt = setsAfter.data?.sets ? ['class', 'home', 'extra'].reduce((a, k) => a + setsAfter.data.sets[k].length, 0) : 0;
-    check('Пас аз «Рӯзро кушо»: 10 масъала (4 синфӣ + 3 хонагӣ + 3 иловагӣ)', setsAfter.status === 200 && cnt === 10, `status=${setsAfter.status}, ${cnt}`);
+    check('Пас аз «Рӯзро кушо»: 30 масъала (10 синфӣ + 10 хонагӣ + 10 иловагӣ)', setsAfter.status === 200 && cnt === 30, `status=${setsAfter.status}, ${cnt}`);
     await api(T.page, 'POST', `/api/lessons/${examDay.id}/open`, { opened: true });
     const exSets0 = (await api(S2.page, 'GET', `/api/lessons/${examDay.id}/sets`)).data;
+    check('Имтиҳон: A 10 + B 10 + мураккаб 10', exSets0.sets.class.length === 10 && exSets0.sets.home.length === 10 && exSets0.sets.extra.length === 10,
+      `${exSets0.sets.class.length}+${exSets0.sets.home.length}+${exSets0.sets.extra.length}`);
     const exPid = exSets0.sets.class[0].id;
     const before = await api(S2.page, 'GET', `/api/problems/${exPid}`);
     check('Имтиҳон: то қабули шартҳо масъала кушода намешавад', before.status === 403 && before.data?.needAccept === true, String(before.status));
@@ -488,7 +490,7 @@ async function main() {
     const afterTpl = (await api(T.page, 'GET', `/api/lessons/${other.id}/sets`)).data.sets.class.length;
     await api(T.page, 'POST', `/api/lessons/${other.id}/replan`);
     const afterPlan = (await api(T.page, 'GET', `/api/lessons/${other.id}/sets`)).data.sets;
-    check('«↺ Аз нақшаи курс» рӯзро ба 4+3+3 масъала бармегардонад', afterPlan.class.length === 4 && afterPlan.home.length === 3 && afterPlan.extra.length === 3, `дарси омода: ${afterTpl} → ${afterPlan.class.length}+${afterPlan.home.length}+${afterPlan.extra.length}`);
+    check('«↺ Аз нақшаи курс» рӯзро ба 10+10+10 масъала бармегардонад', afterPlan.class.length === 10 && afterPlan.home.length === 10 && afterPlan.extra.length === 10, `дарси омода: ${afterTpl} → ${afterPlan.class.length}+${afterPlan.home.length}+${afterPlan.extra.length}`);
     await S2.page.goto(U(P) + `/#/set/${closedDay.id}/class/0`); await S2.page.waitForFunction(() => !!window.__editor);
     check('Тугмаи «Устод, ёрӣ лозим» нест', (await S2.page.locator('text=Устод, ёрӣ лозим').count()) === 0);
     await S2.ctx.close();
