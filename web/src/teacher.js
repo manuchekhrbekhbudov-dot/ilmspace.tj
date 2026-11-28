@@ -2,6 +2,7 @@
 import { html, useState, useEffect, api, useLoad, useEvents, Loading, ErrorBox, Empty, Modal, fTime, fDate, fDateTime, fWeekday, dushanbeToday, dushanbeDateOf, TOPIC, TOPIC_KEYS, Verdict, toast, CodeView, since } from './lib.js';
 import { AsgState } from './student.js';
 import { CourseMap } from './course.js';
+import { Journal } from './journal.js';
 
 // Шогирдони блокшуда дар ҳамаи гурӯҳҳо — бо тугмаи «Блокро бардор»
 function BlockedPanel() {
@@ -136,12 +137,13 @@ export function GroupPage({ id, tab: tab0 }) {
     <div class="row" style="margin:6px 0 14px"><h1>${g.group.name}</h1></div>
     <${QuickStudents} g=${g} reload=${reload} openTab=${() => setTab('students')} />
     <div class="tabs" style="margin:0 0 16px;position:static;padding:0">
-      ${[['course', 'Нақшаи курс'], ['lessons', `Ҷадвали дарсҳо (${g.lessons.length})`], ['students', `Шогирдон (${g.members.filter(m => m.status === 'active').length})${pending.length ? ` · ${pending.length} нав` : ''}`], ['homework', `Вазифаҳо (${g.assignments.length})`]].map(([k, t]) => html`<button class=${tab === k ? 'on' : ''} onClick=${() => setTab(k)}>${t}</button>`)}
+      ${[['course', 'Нақшаи курс'], ['lessons', `Ҷадвали дарсҳо (${g.lessons.length})`], ['students', `Шогирдон (${g.members.filter(m => m.status === 'active').length})${pending.length ? ` · ${pending.length} нав` : ''}`], ['journal', 'Журнал'], ['homework', `Вазифаҳо (${g.assignments.length})`]].map(([k, t]) => html`<button class=${tab === k ? 'on' : ''} onClick=${() => setTab(k)}>${t}</button>`)}
     </div>
     ${tab === 'course' && html`<${CourseMap} gid=${Number(id)} embedded />`}
     ${tab === 'lessons' && html`<${LessonsTab} g=${g} templates=${templates} reload=${reload} />`}
     ${tab === 'students' && html`<${StudentsTab} g=${g} reload=${reload} />`}
     ${tab === 'homework' && html`<${HomeworkTab} g=${g} problems=${problems} reload=${reload} />`}
+    ${tab === 'journal' && html`<${Journal} gid=${Number(id)} />`}
   </div>`;
 }
 

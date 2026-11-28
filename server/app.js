@@ -658,7 +658,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   R('POST', '/api/lessons/:id/start', ({ user, params }) => {
     need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
     Q.run("UPDATE lessons SET status='finished', ended_at=COALESCE(ended_at, strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE group_id=? AND status='live' AND id!=?", l.group_id, l.id);
-    Q.run("UPDATE lessons SET status='live', opened=1, started_at=COALESCE(started_at, strftime('%Y-%m-%dT%H:%M:%fZ','now')), ended_at=NULL WHERE id=?", l.id);
+    Q.run("UPDATE lessons SET status='live', opened=1, opened_at=COALESCE(opened_at, strftime('%Y-%m-%dT%H:%M:%fZ','now')), started_at=COALESCE(started_at, strftime('%Y-%m-%dT%H:%M:%fZ','now')), ended_at=NULL WHERE id=?", l.id);
     lessonEvent(l); return { ok: true };
   });
   R('POST', '/api/lessons/:id/finish', ({ user, params }) => {
@@ -820,6 +820,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   R('POST', '/api/lessons/:id/open', ({ user, params, body }) => {
     need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
     Q.run('UPDATE lessons SET opened=? WHERE id=?', body.opened === false ? 0 : 1, l.id);
+    if (body.opened !== false) Q.run("UPDATE lessons SET opened_at=COALESCE(opened_at, strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE id=?", l.id);
     lessonEvent(l); return { ok: true, opened: body.opened !== false };
   });
   // Рӯзро аз нав аз рӯи нақшаи курс пур кардан (масалан, пас аз «Ба гурӯҳ деҳ»-и дарси омода)
@@ -830,6 +831,152 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     const plan = coursePlan();
     Q.tx(() => fillLesson(Q, l.id, plan[i % plan.length]));
     lessonEvent(l); return { ok: true };
+  });
+  // ───── Журнал (CRM) ─────
+  // Ҳар рӯз: ҳозирӣ (☑) ва хол 0–5. Ҳар ҳафта: бонус. Рӯзи имтиҳон: агар устод хол нагузошта бошад — аз фоизи имтиҳон (100% → 5).
+  // Фоизи ҳафта = (ҷамъи холҳо + бонус) / (5 × рӯзҳои холгузошта) × 100 (на зиёда аз 100).
+  // Миёна = (Ҳ1 + Ҳ2 + …) / шумораи ҳафтаҳои холдор. Масалан, 100% ва 40% → 70%.
+  // Шогирд ҷадвал ва холҳоро мебинад; шарҳҳо ва маълумоти падару модар танҳо барои устод.
+  const ATT = ['present', 'late', 'absent', 'excused'];
+  const CKINDS = ['auto', 'absent', 'late', 'behavior', 'other'];
+  const INFO_FIELDS = ['phone', 'father_name', 'father_phone', 'mother_name', 'mother_phone', 'notes'];
+  const EMPTY_INFO = Object.fromEntries(INFO_FIELDS.map(k => [k, '']));
+  const infoOf = uid => Q.get(`SELECT ${INFO_FIELDS.join(', ')} FROM student_info WHERE user_id=?`, uid) || { ...EMPTY_INFO };
+  function courseWeeks(gid) {
+    const weeks = []; let w = 0, d = 0;
+    for (const l of Q.all('SELECT * FROM lessons WHERE group_id=? ORDER BY scheduled_at, number', gid)) {
+      if (d === 0 || d === 6) { w++; d = 0; } d++;   // як ҳафта = 6 рӯз (5 дарс + имтиҳон)
+      (weeks[w - 1] ||= { week: w, days: [] }).days.push({ ...l, day: d });
+    }
+    return weeks.filter(Boolean).map(x => {
+      const exam = x.days.find(l => l.kind === 'exam') || null;
+      const held = !!exam && (!!exam.opened_at || !!Q.get('SELECT 1 FROM exam_violations WHERE lesson_id=? AND accepted_at IS NOT NULL', exam.id));
+      return { ...x, exam, held, examIds: exam ? (s => [...s.class, ...s.home, ...s.extra])(lessonSets(exam)) : [] };
+    });
+  }
+  function journalData(gid, teacher) {
+    const weeks = courseWeeks(gid);
+    const lids = weeks.flatMap(w => w.days.map(l => l.id));
+    const ph = lids.map(() => '?').join(',');
+    const by = (rows, k, v) => { const m = new Map(); for (const r of rows) { if (!m.has(r.user_id)) m.set(r.user_id, new Map()); m.get(r.user_id).set(r[k], r[v]); } return m; };
+    const rowsIn = sql => lids.length ? Q.all(sql.replace('IN ()', `IN (${ph})`), ...lids) : [];
+    const att = by(rowsIn('SELECT lesson_id, user_id, status FROM attendance WHERE lesson_id IN ()'), 'lesson_id', 'status');
+    const scores = by(rowsIn('SELECT lesson_id, user_id, score FROM day_scores WHERE lesson_id IN ()'), 'lesson_id', 'score');
+    const comm = teacher ? by(rowsIn('SELECT lesson_id, user_id, COUNT(*) n FROM journal_comments WHERE lesson_id IN () GROUP BY lesson_id, user_id'), 'lesson_id', 'n') : new Map();
+    const bonus = by(Q.all('SELECT week, user_id, bonus FROM week_bonus WHERE group_id=?', gid), 'week', 'bonus');
+    const ms = members(gid);
+    // Хол дар ҳар рӯз (бо хол аз имтиҳон)
+    const cells = new Map(ms.map(m => {
+      const solved = solvedSet(m.id);
+      return [m.id, weeks.map(w => w.days.map(l => {
+        let sc = scores.get(m.id)?.get(l.id); let auto = false;
+        if (sc == null && l.kind === 'exam' && w.held && w.examIds.length) {
+          const e = examRow(l.id, m.id);
+          if (!(l.opened && !e.finished_at && !e.blocked)) { sc = Math.round((5 * w.examIds.filter(id => solved.has(id)).length) / w.examIds.length); auto = true; }
+        }
+        return { id: l.id, att: att.get(m.id)?.get(l.id) || null, score: sc ?? null, auto, comments: teacher ? comm.get(m.id)?.get(l.id) || 0 : undefined };
+      }))];
+    }));
+    // Рӯзи «холгузошта» — рӯзе, ки ҳадди ақал як шогирд хол дорад
+    const graded = weeks.map((w, wi) => w.days.map((l, di) => ms.some(m => cells.get(m.id)[wi][di].score != null)));
+    const students = ms.map(m => {
+      const ws = weeks.map((w, wi) => {
+        const days = cells.get(m.id)[wi];
+        const n = graded[wi].filter(Boolean).length, b = bonus.get(m.id)?.get(w.week) || 0;
+        const sum = days.reduce((a, d, di) => a + (graded[wi][di] ? d.score || 0 : 0), 0);
+        return { week: w.week, days, bonus: b, percent: n ? Math.max(0, Math.min(100, Math.round((100 * (sum + b)) / (5 * n)))) : null };
+      });
+      const counted = ws.filter(x => x.percent != null);
+      return { id: m.id, name: m.name, login: m.login, ...(teacher ? { info: infoOf(m.id) } : {}), weeks: ws,
+        overall: counted.length ? Math.round(counted.reduce((a, x) => a + x.percent, 0) / counted.length) : null };
+    });
+    return { today: dushanbeDate(), students,
+      weeks: weeks.map((w, wi) => ({ week: w.week, graded: graded[wi].filter(Boolean).length,
+        days: w.days.map(l => ({ id: l.id, day: l.day, kind: l.kind, title: l.title, date: dushanbeDate(l.scheduled_at) })) })) };
+  }
+  R('GET', '/api/groups/:id/journal', ({ user, params }) => {
+    need(user, 'teacher'); const gid = Number(params.id); if (!ownsGroup(user, gid)) throw forbidden();
+    return { group: Q.get('SELECT id, name FROM groups WHERE id=?', gid), role: 'teacher', ...journalData(gid, true) };
+  });
+  // Шогирд: ҷадвал ва холҳои гурӯҳ (бе шарҳҳо ва бе маълумоти падару модар)
+  R('GET', '/api/my/journal', ({ user }) => {
+    need(user, 'student');
+    const g = Q.get("SELECT g.id, g.name FROM group_members m JOIN groups g ON g.id=m.group_id WHERE m.user_id=? AND m.status='active' ORDER BY m.created_at LIMIT 1", user.id);
+    if (!g) throw notFound('Шумо ҳанӯз дар гурӯҳ нестед.');
+    return { group: g, role: 'student', me: user.id, ...journalData(g.id, false) };
+  });
+  const journalEvent = gid => { const t = Q.get('SELECT teacher_id FROM groups WHERE id=?', gid); publish([t.teacher_id, ...members(gid).map(m => m.id)], { type: 'journal', group_id: gid }); };
+  // Ҳозирӣ: як шогирд (present | late | absent | excused | null)
+  R('PUT', '/api/lessons/:id/attendance', ({ user, params, body }) => {
+    need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
+    const uid = Number(body.user_id); if (!isMember(uid, l.group_id)) throw bad('Ин шогирд дар гурӯҳ нест.');
+    const st = body.status == null || body.status === '' ? null : String(body.status);
+    if (st && !ATT.includes(st)) throw bad('Ҳолати ҳозирӣ нодуруст аст.');
+    if (st) Q.run(`INSERT INTO attendance (lesson_id, user_id, status) VALUES (?,?,?)
+      ON CONFLICT(lesson_id, user_id) DO UPDATE SET status=excluded.status, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')`, l.id, uid, st);
+    else Q.run('DELETE FROM attendance WHERE lesson_id=? AND user_id=?', l.id, uid);
+    journalEvent(l.group_id); return { ok: true, status: st };
+  });
+  // Ҳамаро «омад» қайд кардан (status: null — ҳамаро тоза кардан)
+  R('POST', '/api/lessons/:id/attendance/all', ({ user, params, body }) => {
+    need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
+    if (body.status === null) { Q.run('DELETE FROM attendance WHERE lesson_id=?', l.id); journalEvent(l.group_id); return { ok: true }; }
+    const st = ATT.includes(body.status) ? body.status : 'present';
+    let n = 0;
+    Q.tx(() => { for (const m of members(l.group_id)) n += Number(Q.run('INSERT OR IGNORE INTO attendance (lesson_id, user_id, status) VALUES (?,?,?)', l.id, m.id, st).changes); });
+    journalEvent(l.group_id); return { ok: true, marked: n };
+  });
+  // Холи рӯз 0–5 (null — тоза)
+  R('PUT', '/api/lessons/:id/score', ({ user, params, body }) => {
+    need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
+    const uid = Number(body.user_id); if (!isMember(uid, l.group_id)) throw bad('Ин шогирд дар гурӯҳ нест.');
+    if (body.score == null || body.score === '') Q.run('DELETE FROM day_scores WHERE lesson_id=? AND user_id=?', l.id, uid);
+    else {
+      const sc = Number(body.score); if (!Number.isInteger(sc) || sc < 0 || sc > 5) throw bad('Хол бояд аз 0 то 5 бошад.');
+      Q.run('INSERT INTO day_scores (lesson_id, user_id, score) VALUES (?,?,?) ON CONFLICT(lesson_id, user_id) DO UPDATE SET score=excluded.score', l.id, uid, sc);
+    }
+    journalEvent(l.group_id); return { ok: true };
+  });
+  // Бонуси ҳафта
+  R('PUT', '/api/groups/:id/bonus', ({ user, params, body }) => {
+    need(user, 'teacher'); const gid = Number(params.id); if (!ownsGroup(user, gid)) throw forbidden();
+    const uid = Number(body.user_id), week = Number(body.week), b = Number(body.bonus) || 0;
+    if (!isMember(uid, gid)) throw bad('Ин шогирд дар гурӯҳ нест.');
+    if (!Number.isInteger(week) || week < 1 || week > 60) throw bad('Ҳафта нодуруст аст.');
+    if (!Number.isInteger(b) || b < -30 || b > 30) throw bad('Бонус бояд аз −30 то 30 бошад.');
+    Q.run('INSERT INTO week_bonus (group_id, week, user_id, bonus) VALUES (?,?,?,?) ON CONFLICT(group_id, week, user_id) DO UPDATE SET bonus=excluded.bonus', gid, week, uid, b);
+    journalEvent(gid); return { ok: true };
+  });
+  // Шарҳҳои устод ба шогирд дар як рӯз (ғоибӣ, дермонӣ, рафтор…) — танҳо устод мебинад
+  R('GET', '/api/lessons/:id/jcomments', ({ user, params, query }) => {
+    need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
+    return Q.all('SELECT c.id, c.kind, c.text, c.late_min, c.created_at, u.name author FROM journal_comments c JOIN users u ON u.id=c.author_id WHERE c.lesson_id=? AND c.user_id=? ORDER BY c.id', l.id, Number(query.user_id));
+  });
+  R('POST', '/api/lessons/:id/jcomments', ({ user, params, body }) => {
+    need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
+    const uid = Number(body.user_id); if (!isMember(uid, l.group_id)) throw bad('Ин шогирд дар гурӯҳ нест.');
+    const kind = CKINDS.includes(body.kind) ? body.kind : 'other';
+    const text = String(body.text || '').trim().slice(0, 1000);
+    const late = body.late_min === '' || body.late_min == null ? null : Math.max(0, Math.min(600, Math.round(Number(body.late_min) || 0)));
+    if (!text && late == null) throw bad('Шарҳ ё дақиқаи дермониро нависед.');
+    Q.run('INSERT INTO journal_comments (lesson_id, user_id, author_id, kind, text, late_min) VALUES (?,?,?,?,?,?)', l.id, uid, user.id, kind, text, late);
+    if (late != null && late > 0) Q.run(`INSERT INTO attendance (lesson_id, user_id, status) VALUES (?,?,'late') ON CONFLICT(lesson_id, user_id) DO UPDATE SET status='late'`, l.id, uid);
+    if (kind === 'absent') Q.run(`INSERT INTO attendance (lesson_id, user_id, status) VALUES (?,?,'absent') ON CONFLICT(lesson_id, user_id) DO UPDATE SET status='absent'`, l.id, uid);
+    journalEvent(l.group_id); return { ok: true };
+  });
+  R('DELETE', '/api/jcomments/:id', ({ user, params }) => {
+    need(user, 'teacher');
+    const c = Q.get('SELECT c.id, l.group_id FROM journal_comments c JOIN lessons l ON l.id=c.lesson_id WHERE c.id=?', Number(params.id));
+    if (!c || !ownsGroup(user, c.group_id)) throw notFound();
+    Q.run('DELETE FROM journal_comments WHERE id=?', c.id); journalEvent(c.group_id); return { ok: true };
+  });
+  // Маълумоти шогирд (телефонҳо, падар ва модар) — танҳо устод
+  R('PUT', '/api/students/:uid/info', ({ user, params, body }) => {
+    need(user, 'teacher'); const uid = Number(params.uid); if (!teacherSeesUser(user, uid)) throw forbidden();
+    const v = Object.fromEntries(INFO_FIELDS.map(k => [k, String(body[k] ?? '').trim().slice(0, k === 'notes' ? 2000 : 120)]));
+    Q.run(`INSERT INTO student_info (user_id, ${INFO_FIELDS.join(', ')}) VALUES (?, ${INFO_FIELDS.map(() => '?').join(', ')})
+      ON CONFLICT(user_id) DO UPDATE SET ${INFO_FIELDS.map(k => `${k}=excluded.${k}`).join(', ')}, updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')`, uid, ...INFO_FIELDS.map(k => v[k]));
+    return { ok: true, info: v };
   });
   // Имтиҳон: вайронкунӣ (нусхабардорӣ, рафтан ба равзанаи дигар). 3 → блоки худкор.
   R('POST', '/api/lessons/:id/violation', ({ user, params, body }) => {

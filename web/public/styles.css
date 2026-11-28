@@ -659,3 +659,44 @@ a.chip:hover { text-decoration: none; filter: brightness(1.1); }
 .settab.on small { color: var(--acc); }
 .progcard .bar > i, .bar > i { border-radius: 99px; }
 .pico { background: var(--warn-bg); }
+
+/* ───── Журнал ───── */
+.jnamebtn { all: unset; cursor: pointer; color: var(--text); font-weight: 600; }
+.jnamebtn:hover { color: var(--acc); text-decoration: underline; }
+.jnamebtn:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.jchart { padding: 16px 18px; margin-bottom: 14px; }
+.jchart svg { width: 100%; height: auto; display: block; }
+.jchart .grid { stroke: var(--line); stroke-dasharray: 3 4; }
+.jchart .ax { fill: var(--muted); font-size: 15px; font-family: var(--font); }
+.jchart g.dim { opacity: .15; } .jchart g.hl polyline { stroke-width: 5; }
+.jlegend { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; margin-top: 10px; }
+.jl { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-size: 14.5px; padding: 3px 8px; border-radius: 8px; }
+.jl i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.jl.on, .jl:hover { background: var(--panel2); } .jl.me { font-weight: 800; }
+.jhelp { margin: 0 2px 12px; line-height: 1.6; }
+.jweek { border: 1px solid var(--line); border-radius: 16px; background: var(--panel); margin-bottom: 10px; overflow: hidden; }
+.jweek-h { all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; gap: 8px; width: 100%; padding: 14px 18px; font-size: 19px; font-weight: 800; }
+.jweek-h:hover { background: var(--panel2); } .jweek-h:focus-visible { outline: 2px solid var(--acc); outline-offset: -2px; }
+.jweek-h .caret { color: var(--muted); font-size: 14px; }
+.jwrap { overflow-x: auto; padding: 0 10px 12px; }
+.jt { border-collapse: collapse; min-width: 100%; font-size: 14.5px; }
+.jt th, .jt td { border: 1px solid var(--line); padding: 5px 6px; text-align: center; white-space: nowrap; }
+.jt th { background: var(--panel2); font-weight: 700; }
+.jt th.jdate.today { background: var(--acc-soft); color: var(--acc); }
+.jt .jsub { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.jt td.jname, .jt th.jname { text-align: left; position: sticky; left: 0; background: var(--panel); z-index: 1; min-width: 170px; }
+.jt th.jname { background: var(--panel2); }
+.jt tr.me td { background: var(--acc-soft); } .jt tr.me td.jname { background: color-mix(in srgb, var(--acc) 14%, var(--panel)); }
+.jt input[type=checkbox] { width: 20px; height: 20px; accent-color: var(--acc); vertical-align: middle; cursor: pointer; }
+.jt input[type=checkbox].absent { outline: 2px solid color-mix(in srgb, var(--bad) 60%, transparent); }
+.jt input[type=checkbox].late { accent-color: var(--warn); }
+.jall { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
+.jc { all: unset; cursor: pointer; font-size: 17px; color: var(--muted); margin-right: 6px; vertical-align: middle; }
+.jc.has { color: var(--violet); } .jc:focus-visible { outline: 2px solid var(--acc); }
+.jsel { font: inherit; font-size: 15px; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); min-width: 48px; }
+.jsel.auto { border-style: dashed; border-color: var(--acc); }
+.jbonus { width: 62px; font: inherit; padding: 4px 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); text-align: center; }
+.jscv { font-weight: 700; }
+.pct.hi { color: var(--ok); } .pct.mid { color: var(--warn); } .pct.lo { color: var(--bad); }
+.jcom { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; background: var(--panel2); }
+.jsum { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }

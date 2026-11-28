@@ -223,6 +223,51 @@ CREATE TABLE IF NOT EXISTS exam_events (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
+-- Журнал (CRM): маълумоти шогирд барои устод. Шогирд инро намебинад.
+CREATE TABLE IF NOT EXISTS student_info (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  phone TEXT NOT NULL DEFAULT '',
+  father_name TEXT NOT NULL DEFAULT '',
+  father_phone TEXT NOT NULL DEFAULT '',
+  mother_name TEXT NOT NULL DEFAULT '',
+  mother_phone TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+-- Ҳозирӣ дар ҳар рӯз: омад, дер омад, наомад, бо сабаби узрнок
+CREATE TABLE IF NOT EXISTS attendance (
+  lesson_id INTEGER NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('present','late','absent','excused')),
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  PRIMARY KEY (lesson_id, user_id)
+);
+
+-- Хол барои ҳар рӯз (0–5), бонуси ҳафта ва шарҳҳои устод (ғоибӣ, дермонӣ…)
+CREATE TABLE IF NOT EXISTS day_scores (
+  lesson_id INTEGER NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 5),
+  PRIMARY KEY (lesson_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS week_bonus (
+  group_id INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  week INTEGER NOT NULL,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  bonus INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (group_id, week, user_id)
+);
+CREATE TABLE IF NOT EXISTS journal_comments (
+  id INTEGER PRIMARY KEY,
+  lesson_id INTEGER NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  author_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL DEFAULT 'other',
+  text TEXT NOT NULL DEFAULT '',
+  late_min INTEGER,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_sub_user_problem ON submissions(user_id, problem_id);
 CREATE INDEX IF NOT EXISTS idx_sub_lesson ON submissions(lesson_id);
 CREATE INDEX IF NOT EXISTS idx_help_group ON help_requests(group_id, status);
@@ -241,6 +286,11 @@ export function openDb(file) {
   if (!cols.includes('kind')) db.exec("ALTER TABLE lessons ADD COLUMN kind TEXT NOT NULL DEFAULT 'lesson'");
   if (!cols.includes('opened')) db.exec('ALTER TABLE lessons ADD COLUMN opened INTEGER NOT NULL DEFAULT 0');
   if (!cols.includes('extra_problem_ids')) db.exec("ALTER TABLE lessons ADD COLUMN extra_problem_ids TEXT NOT NULL DEFAULT '[]'");
+  // Кай бори аввал кушода шуд (рӯз пас аз пӯшидан ҳам «гузашта» ҳисоб мешавад — барои холи ҳафта)
+  if (!cols.includes('opened_at')) {
+    db.exec('ALTER TABLE lessons ADD COLUMN opened_at TEXT');
+    db.exec("UPDATE lessons SET opened_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE opened=1 OR status!='planned'");
+  }
   const gcols = db.prepare('PRAGMA table_info(groups)').all().map(c => c.name);
   if (!gcols.includes('lock_days')) db.exec('ALTER TABLE groups ADD COLUMN lock_days INTEGER NOT NULL DEFAULT 0');
   const ecols = db.prepare('PRAGMA table_info(exam_violations)').all().map(c => c.name);
