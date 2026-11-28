@@ -71,25 +71,30 @@ export function CourseMap({ gid, embedded }) {
         </div>
       </button>`)}</div>
     </section>`)}</div>
-    ${open && html`<${DayPanel} d=${all.find(x => x.id === open.id) || open} role=${role} onClose=${() => setOpen(null)} onChanged=${() => reload(true)} />`}
+    ${open && html`<${DayPanel} d=${all.find(x => x.id === open.id) || open} role=${role} group=${group} onClose=${() => setOpen(null)} onChanged=${() => reload(true)} />`}
   </div>`;
 }
 
-function DayPanel({ d, role, onClose, onChanged }) {
+function DayPanel({ d, role, group, onClose, onChanged }) {
   const [{ data, loading, error }, reload] = useLoad(() => d.locked ? Promise.resolve(null) : api(`/api/lessons/${d.id}/sets`), [d.id, d.locked]);
   const [edit, setEdit] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => { const k = e => e.key === 'Escape' && onClose(); addEventListener('keydown', k); return () => removeEventListener('keydown', k); }, []);
+  const replan = async () => {
+    if (!confirm('Масъалаҳои ин рӯзро аз нақшаи курс аз нав гузорем? (Масалан, агар «Дарси омода» ба ин рӯз гузошта шуда бошад.)')) return;
+    try { await api(`/api/lessons/${d.id}/replan`, { method: 'POST' }); toast('Рӯз аз нақшаи курс аз нав пур шуд.'); onChanged(); reload(true); } catch (e) { toast(e.message); }
+  };
   const toggleOpen = async () => { setBusy(true); try { await api(`/api/lessons/${d.id}/open`, { method: 'POST', body: { opened: !d.opened } }); toast(d.opened ? 'Рӯз пӯшида шуд.' : 'Рӯз кушода шуд — шогирдон масъалаҳоро мебинанд.'); onChanged(); reload(true); } catch (e) { toast(e.message); } finally { setBusy(false); } };
   return html`<div class="drawer" role="dialog" aria-label="Маҷмӯаҳои рӯз">
-    <div class="row" style="margin-bottom:6px;align-items:flex-start"><div style="flex:1"><div class="kicker">${d.kind === 'exam' ? `Ҳафтаи ${d.week} · Имтиҳон` : `Ҳафтаи ${d.week} · Рӯзи ${d.day}`} · ${fWeekday(d.scheduled_at)}, ${fDate(d.scheduled_at)}, ${fTime(d.scheduled_at)}</div><h2>${d.title}</h2></div>
+    <div class="row" style="margin-bottom:6px;align-items:flex-start"><div style="flex:1">${group && html`<div class="dp-group">👥 ${group.name}</div>`}<div class="kicker">${d.kind === 'exam' ? `Ҳафтаи ${d.week} · Имтиҳон` : `Ҳафтаи ${d.week} · Рӯзи ${d.day}`} · ${fWeekday(d.scheduled_at)}, ${fDate(d.scheduled_at)}, ${fTime(d.scheduled_at)}</div><h2>${d.title}</h2></div>
       <button class="btn ghost icon-btn" onClick=${onClose} aria-label="Пӯшидан">✕</button></div>
     ${role === 'teacher' && html`<div class=${'opencard' + (d.opened ? ' on' : '')}>
-      <div><b>${d.opened ? 'Рӯз барои шогирдон кушода аст' : 'Рӯз барои шогирдон пӯшида аст'}</b><div class="small muted">${d.opened ? 'Шогирдон масъалаҳоро мебинанд ва ҳал мекунанд.' : 'То кушодан шогирдон ба ин рӯз даромада наметавонанд.'}</div></div>
+      <div><b>${d.opened ? '🔓 Рӯз барои шогирдон кушода аст' : '🔒 Рӯз барои шогирдон пӯшида аст'}</b><div class="small muted">${d.opened ? 'Шогирдони ҳамин гурӯҳ масъалаҳоро мебинанд ва ҳал мекунанд.' : 'Шогирдони ҳамин гурӯҳ ба ин рӯз даромада наметавонанд.'}</div></div>
       <button class=${'btn ' + (d.opened ? '' : 'p')} disabled=${busy} onClick=${toggleOpen}>${d.opened ? 'Рӯзро пӯш' : 'Рӯзро кушо'}</button></div>`}
     ${d.locked ? html`<div class="notice" style="margin-top:12px">🔒 Ин рӯз ҳанӯз пӯшида аст. Устод онро мекушояд.</div>`
       : loading ? html`<${Loading} />` : error ? html`<${ErrorBox} error=${error} retry=${reload} />` : html`<div class="col" style="margin-top:14px">
-      ${role === 'teacher' && html`<div class="row"><a class="btn" href=${'#/live/' + d.id}>Дарси зинда</a><a class="btn" href=${'#/report/' + d.id}>Ҳисобот</a><button class="btn" onClick=${() => setEdit(true)}>Маҷмӯаҳоро таҳрир кун</button></div>`}
+      ${role === 'teacher' && html`<div class="row"><a class="btn" href=${'#/live/' + d.id}>Дарси зинда</a><a class="btn" href=${'#/report/' + d.id}>Ҳисобот</a><button class="btn" onClick=${() => setEdit(true)}>Маҷмӯаҳоро таҳрир кун</button>
+        ${d.state !== 'live' && html`<button class="btn" title="Масъалаҳои ин рӯзро аз нақшаи курс аз нав мегузорад" onClick=${replan}>↺ Аз нақшаи курс</button>`}</div>`}
       ${data.exam && html`<div class="notice warn"><b>Имтиҳон.</b> Нусхабардорӣ (copy/paste) ва рафтан ба равзанаи дигар манъ аст. Пас аз 3 вайронкунӣ шумо блок мешавед. Ҳозир: ${data.exam.count}/3.</div>`}
       ${['class', 'home', 'extra'].map(k => { const ps = data.sets[k]; if (!ps.length) return null; const sv = ps.filter(p => p.solved).length;
         return html`<a class="card setcard" href=${`#/set/${d.id}/${k}`}>

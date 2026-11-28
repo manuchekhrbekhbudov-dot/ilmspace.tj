@@ -538,3 +538,4 @@ body.exam-on .top .nav, body.exam-on .top .logo, body.exam-on .top .userpill { p
 .bpwho { flex: 1; min-width: 200px; font-size: 16px; }
 .chip.bad { border-color: var(--bad); color: var(--bad); background: var(--bad-bg); font-weight: 700; }
 a.chip:hover { text-decoration: none; filter: brightness(1.1); }
+.dp-group { display: inline-block; font-weight: 800; font-size: 15px; color: var(--acc); background: var(--acc-soft); border: 1px solid color-mix(in srgb, var(--acc) 35%, transparent); padding: 3px 10px; border-radius: 999px; margin-bottom: 6px; }

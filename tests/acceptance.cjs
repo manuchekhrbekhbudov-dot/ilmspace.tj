@@ -470,6 +470,25 @@ async function main() {
     const fin = await api(S2.page, 'GET', `/api/problems/${exPid}`);
     const finSets = (await api(S2.page, 'GET', `/api/lessons/${examDay.id}/sets`)).data;
     check('«Имтиҳонро тамом кардам» → масъалаҳо баста, натиҷа нишон дода мешавад', fin.status === 403 && finSets.exam?.finished === true, String(fin.status));
+    // «Рӯзро пӯш» ҳатто вақте дарс зинда ё тамомшуда аст
+    const other = days.find(d => d.kind === 'lesson' && !d.opened && d.id !== closedDay.id);
+    await api(T.page, 'POST', `/api/lessons/${other.id}/start`);
+    const liveOpen = await api(S2.page, 'GET', `/api/lessons/${other.id}/sets`);
+    await api(T.page, 'POST', `/api/lessons/${other.id}/open`, { opened: false });
+    const liveClosed = await api(S2.page, 'GET', `/api/lessons/${other.id}/sets`);
+    const liveLessonPage = await api(S2.page, 'GET', `/api/lessons/${other.id}`);
+    await api(T.page, 'POST', `/api/lessons/${other.id}/finish`);
+    const finClosed = await api(S2.page, 'GET', `/api/lessons/${other.id}/sets`);
+    const stCourse = (await api(S2.page, 'GET', '/api/course')).data.weeks.flatMap(w => w.days).find(d => d.id === other.id);
+    check('«Рӯзро пӯш» дарси зинда ва тамомшударо ҳам мепӯшад', liveOpen.status === 200 && liveClosed.status === 403 && liveLessonPage.status === 403 && finClosed.status === 403 && stCourse.state === 'locked',
+      `${liveOpen.status}/${liveClosed.status}/${liveLessonPage.status}/${finClosed.status}/${stCourse.state}`);
+    // «↺ Аз нақшаи курс»: рӯз аз нав аз рӯи нақша пур мешавад
+    const tpl = (await api(T.page, 'GET', '/api/templates')).data[0];
+    await api(T.page, 'POST', `/api/templates/${tpl.id}/assign`, { lesson_id: other.id });
+    const afterTpl = (await api(T.page, 'GET', `/api/lessons/${other.id}/sets`)).data.sets.class.length;
+    await api(T.page, 'POST', `/api/lessons/${other.id}/replan`);
+    const afterPlan = (await api(T.page, 'GET', `/api/lessons/${other.id}/sets`)).data.sets;
+    check('«↺ Аз нақшаи курс» рӯзро ба 4+3+3 масъала бармегардонад', afterPlan.class.length === 4 && afterPlan.home.length === 3 && afterPlan.extra.length === 3, `дарси омода: ${afterTpl} → ${afterPlan.class.length}+${afterPlan.home.length}+${afterPlan.extra.length}`);
     await S2.page.goto(U(P) + `/#/set/${closedDay.id}/class/0`); await S2.page.waitForFunction(() => !!window.__editor);
     check('Тугмаи «Устод, ёрӣ лозим» нест', (await S2.page.locator('text=Устод, ёрӣ лозим').count()) === 0);
     await S2.ctx.close();

@@ -21,7 +21,11 @@ export function StudentHome({ user }) {
     ${error && html`<${ErrorBox} error=${error} retry=${reload} />`}
     <div class="grid2">
       <div class="col" style="gap:18px">
-        ${L ? html`<div class="card hl" style="padding:22px">
+        ${L && !L.opened ? html`<div class="card" style="padding:22px">
+          <div class="kicker">🔒 ${L.isToday ? 'Дарси имрӯз' : 'Дарси навбатӣ'} · ${fWeekday(L.scheduled_at)}, ${fDate(L.scheduled_at)}, ${fTime(L.scheduled_at)}</div>
+          <h1 style="margin:6px 0">${L.title}</h1>
+          <div class="muted">Ин рӯз ҳанӯз пӯшида аст. Вақте устод онро мекушояд, масъалаҳо пайдо мешаванд.</div>
+        </div>` : L ? html`<div class="card hl" style="padding:22px">
           <div class="kicker">${L.status === 'live' ? '● Дарс ҳозир меравад' : L.isToday ? 'Дарси имрӯз' : 'Дарси навбатӣ'} · ${fWeekday(L.scheduled_at)}, ${fDate(L.scheduled_at)}, ${fTime(L.scheduled_at)}</div>
           <h1 style="margin:6px 0">${L.title}</h1>
           <div class="muted">${L.steps.length} қадам${L.currentStep ? ` · ту дар қадами ${L.currentStep} — «${L.steps[L.currentStep - 1].title}»` : L.steps.length ? ' · ҳамаи қадамҳо иҷро шуданд' : ''}</div>

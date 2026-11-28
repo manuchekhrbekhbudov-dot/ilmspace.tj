@@ -7,7 +7,7 @@ import { openDb, q } from './db.js';
 import { judgeAll, runOnce, judgeStatus, normalizeOutput, queueDepth } from './judge.js';
 import { persistStatus } from './persist.js';
 import { explainCompile, explainRuntime } from './explain.js';
-import { seedDemo, createGroup, applyTemplate, problemData, ensureTeacher, migrateCourse } from './seed.js';
+import { seedDemo, createGroup, applyTemplate, problemData, ensureTeacher, migrateCourse, coursePlan, fillLesson } from './seed.js';
 import { TOPICS, DEFAULT_STARTER } from './seed/problems.js';
 import { HttpError, bad, forbidden, notFound, J, token, hashPassword, checkPassword, inviteCode, dushanbeDate, localToUtcIso } from './util.js';
 
@@ -259,7 +259,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
         const solved = solvedSet(u.id);
         const done = steps.map(s => s.kind === 'problem' ? (s.problem && solved.has(s.problem.id)) : !!Q.get('SELECT 1 FROM step_responses WHERE step_id=? AND user_id=?', s.id, u.id));
         const cur = done.findIndex(d => !d);
-        todayLesson = { ...l, isToday: dushanbeDate(l.scheduled_at) === today, steps: steps.map((s, i) => ({ id: s.id, title: s.title, kind: s.kind, done: done[i] })), currentStep: cur < 0 ? null : cur + 1 };
+        todayLesson = { ...l, opened: isOpen(l), isToday: dushanbeDate(l.scheduled_at) === today, steps: steps.map((s, i) => ({ id: s.id, title: s.title, kind: s.kind, done: done[i] })), currentStep: cur < 0 ? null : cur + 1 };
       }
     }
     const lastDraft = Q.get('SELECT d.problem_id, d.updated_at FROM drafts d WHERE d.user_id=? ORDER BY d.updated_at DESC LIMIT 1', u.id);
@@ -543,6 +543,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
   // Дарсҳо
   R('GET', '/api/lessons/:id', ({ user, params }) => {
     need(user); const l = lessonFor(user, Number(params.id));
+    if (isLocked(user, l)) throw forbidden('Ин рӯз пӯшида аст — устод онро мекушояд.');
     const steps = lessonSteps(l.id).filter(s => user.role === 'teacher' || !s.skipped).map(s => {
       if (user.role === 'teacher') return s;
       const p = { ...s.payload }; delete p.correct; delete p.explain;
@@ -628,7 +629,8 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
 
   // ───── Нақшаи курс: ҳафта → рӯз → маҷмӯаҳо (синфӣ, хонагӣ, иловагӣ) ─────
   // Рӯзро танҳо устод мекушояд (ё бо оғози дарс). То кушодан шогирд ба он даромада наметавонад.
-  const isOpen = l => !!l.opened || l.status === 'live' || l.status === 'finished';
+  // Рӯз танҳо бо қарори устод кушода аст («Рӯзро кушо» ё оғози «Дарси зинда»). «Рӯзро пӯш» ҳамеша мепӯшад.
+  const isOpen = l => !!l.opened;
   const isLocked = (u, l) => u.role !== 'teacher' && !isOpen(l);
   // Масъалаҳое, ки шогирд дида метавонад: аз рӯзҳои кушода ва вазифаҳои хонагии гурӯҳҳояш
   function studentAccess(uid) {
@@ -681,7 +683,7 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
       const date = dushanbeDate(l.scheduled_at);
       const locked = isLocked(u, l);
       const all = [...sets.class, ...sets.home, ...sets.extra];
-      const state = l.status === 'live' ? 'live' : locked ? 'locked' : u.role === 'teacher' && !isOpen(l) ? 'closed' : date === today ? 'today'
+      const state = locked ? 'locked' : u.role === 'teacher' && !isOpen(l) ? 'closed' : l.status === 'live' ? 'live' : date === today ? 'today'
         : (u.role === 'student' && all.length && all.every(id => solved.has(id))) || (u.role === 'teacher' && l.status === 'finished') ? 'done'
         : date < today ? 'progress' : 'planned';
       const examStat = u.role === 'teacher' && l.kind === 'exam'
@@ -720,6 +722,15 @@ export function createApp({ dbFile, staticDir, seed = true } = {}) {
     need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
     Q.run('UPDATE lessons SET opened=? WHERE id=?', body.opened === false ? 0 : 1, l.id);
     lessonEvent(l); return { ok: true, opened: body.opened !== false };
+  });
+  // Рӯзро аз нав аз рӯи нақшаи курс пур кардан (масалан, пас аз «Ба гурӯҳ деҳ»-и дарси омода)
+  R('POST', '/api/lessons/:id/replan', ({ user, params }) => {
+    need(user, 'teacher'); const l = lessonFor(user, Number(params.id));
+    if (l.status === 'live') throw bad('Дарс ҳозир меравад. Аввал дарсро тамом кунед.');
+    const i = Q.all('SELECT id FROM lessons WHERE group_id=? ORDER BY scheduled_at, number', l.group_id).findIndex(x => x.id === l.id);
+    const plan = coursePlan();
+    Q.tx(() => fillLesson(Q, l.id, plan[i % plan.length]));
+    lessonEvent(l); return { ok: true };
   });
   // Имтиҳон: вайронкунӣ (нусхабардорӣ, рафтан ба равзанаи дигар). 3 → блоки худкор.
   R('POST', '/api/lessons/:id/violation', ({ user, params, body }) => {
